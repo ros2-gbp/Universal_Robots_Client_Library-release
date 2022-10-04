@@ -32,6 +32,11 @@ implemented in order to create external applications leveraging the versatility 
 robotic manipulators.
 
 ## Requirements
+ * **Polyscope** (The software running on the robot controller) version **3.12.0** (for CB3-Series),
+   or **5.5.1** (for e-Series) or higher. If you use an older Polyscope version it is suggested to
+   update your robot. If for some reason (please tell us in the issues why) you cannot upgrade your
+   robot, please see the [version compatibility table](doc/polyscope_compatibility.md) for a
+   compatible tag.
  * The library requires an implementation of **POSIX threads** such as the `pthread` library
  * Socket communication is currently based on Linux sockets. Thus, this library will require Linux
    for building and using.
@@ -375,19 +380,6 @@ int main(int argc, char* argv[])
   return 0;
 }
 ```
-
-### Console_bridge
-If [`console_bridge`](https://github.com/ros/console_bridge) is found on the system during the
-cmake run, logging commands will be done by `console_bridge`. In this case, the define `ROS_BUILD`
-will be set. When built inside a catkin workspace, logging commands are automatically translated
-into ROS logging commands.
-
-If you compile this library against `console_bridge`, make sure to set the logging level in your
-application, as by default `console_bridge` will only print messages of level WARNING or higher.
-See [`examples/primary_pipeline.cpp`](examples/primary_pipeline.cpp) as an example.
-
-The ROS logger will be moved to the ROS driver in a future release.
-
 
 ## Acknowledgment
 Many parts of this library are forked from the [ur_modern_driver](https://github.com/ros-industrial/ur_modern_driver).
