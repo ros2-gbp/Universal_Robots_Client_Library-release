@@ -2,6 +2,7 @@
 
 // -- BEGIN LICENSE BLOCK ----------------------------------------------
 // Copyright 2021 FZI Forschungszentrum Informatik
+// Created on behalf of Universal Robots A/S
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -89,7 +90,7 @@ bool ReverseInterface::writeTrajectoryControlMessage(const TrajectoryControlMess
   uint8_t* b_pos = buffer;
 
   // The first element is always the keepalive signal.
-  int32_t val = htobe32(1);
+  int32_t val = htobe32(keepalive_count_);
   b_pos += append(b_pos, val);
 
   val = htobe32(toUnderlying(trajectory_action));

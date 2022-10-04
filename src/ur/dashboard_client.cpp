@@ -2,6 +2,7 @@
 
 // -- BEGIN LICENSE BLOCK ----------------------------------------------
 // Copyright 2019 FZI Forschungszentrum Informatik
+// Created on behalf of Universal Robots A/S
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -49,6 +50,12 @@ bool DashboardClient::connect()
     URCL_LOG_INFO("%s", read().c_str());
     ret_val = true;
   }
+
+  timeval tv;
+  tv.tv_sec = 1;
+  tv.tv_usec = 0;
+  TCPSocket::setReceiveTimeout(tv);
+
   return ret_val;
 }
 
