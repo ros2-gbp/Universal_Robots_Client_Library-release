@@ -1,3 +1,26 @@
+## ur_client_library (rolling) - 1.3.2-1
+
+The packages in the `ur_client_library` repository were released into the `rolling` distro by running `/home/mauch/.local/bin/bloom-release ur_client_library --track rolling --rosdistro rolling` on `Thu, 13 Jul 2023 18:15:19 -0000`
+
+The `ur_client_library` package was released.
+
+Version of package(s) in repository `ur_client_library`:
+
+- upstream repository: https://github.com/UniversalRobots/Universal_Robots_Client_Library
+- release repository: https://github.com/ros2-gbp/Universal_Robots_Client_Library-release.git
+- rosdistro version: `1.3.1-2`
+- old version: `1.3.1-2`
+- new version: `1.3.2-1`
+
+Versions of tools used:
+
+- bloom version: `0.11.2`
+- catkin_pkg version: `0.5.2`
+- rosdep version: `0.22.2`
+- rosdistro version: `0.9.0`
+- vcstools version: `0.1.42`
+
+
 ## ur_client_library (iron) - 1.3.2-1
 
 The packages in the `ur_client_library` repository were released into the `iron` distro by running `/home/mauch/.local/bin/bloom-release ur_client_library --track iron --rosdistro iron` on `Thu, 13 Jul 2023 18:05:49 -0000`
