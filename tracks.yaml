@@ -204,4 +204,5 @@ tracks:
     ros_distro: rolling
     vcs_type: git
     vcs_uri: https://github.com/UniversalRobots/Universal_Robots_Client_Library
-    version: :{auto}
+    version: 1.3.5
+    version_saved: :{auto}
