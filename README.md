@@ -1,3 +1,26 @@
+## ur_client_library (jazzy) - 1.3.7-1
+
+The packages in the `ur_client_library` repository were released into the `jazzy` distro by running `/usr/bin/bloom-release ur_client_library --rosdistro jazzy --track jazzy` on `Mon, 03 Jun 2024 12:49:36 -0000`
+
+The `ur_client_library` package was released.
+
+Version of package(s) in repository `ur_client_library`:
+
+- upstream repository: https://github.com/UniversalRobots/Universal_Robots_Client_Library
+- release repository: https://github.com/ros2-gbp/Universal_Robots_Client_Library-release.git
+- rosdistro version: `1.3.6-2`
+- old version: `1.3.6-2`
+- new version: `1.3.7-1`
+
+Versions of tools used:
+
+- bloom version: `0.12.0`
+- catkin_pkg version: `1.0.0`
+- rosdep version: `0.24.0`
+- rosdistro version: `0.9.1`
+- vcstools version: `0.1.42`
+
+
 ## ur_client_library (iron) - 1.3.7-1
 
 The packages in the `ur_client_library` repository were released into the `iron` distro by running `/usr/bin/bloom-release ur_client_library --rosdistro iron --track iron` on `Mon, 03 Jun 2024 12:47:28 -0000`
