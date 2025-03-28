@@ -1,3 +1,26 @@
+## ur_client_library (jazzy) - 1.9.0-1
+
+The packages in the `ur_client_library` repository were released into the `jazzy` distro by running `/usr/bin/bloom-release ur_client_library --rosdistro jazzy` on `Fri, 28 Mar 2025 14:15:50 -0000`
+
+The `ur_client_library` package was released.
+
+Version of package(s) in repository `ur_client_library`:
+
+- upstream repository: https://github.com/UniversalRobots/Universal_Robots_Client_Library
+- release repository: https://github.com/ros2-gbp/Universal_Robots_Client_Library-release.git
+- rosdistro version: `1.8.0-1`
+- old version: `1.8.0-1`
+- new version: `1.9.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.12.0`
+- catkin_pkg version: `1.0.0`
+- rosdep version: `0.25.1`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## ur_client_library (humble) - 1.9.0-1
 
 The packages in the `ur_client_library` repository were released into the `humble` distro by running `/usr/bin/bloom-release ur_client_library --rosdistro humble` on `Fri, 28 Mar 2025 14:07:28 -0000`
