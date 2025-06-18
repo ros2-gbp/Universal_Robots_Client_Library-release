@@ -1,3 +1,5 @@
+:github_url: https://github.com/UniversalRobots/Universal_Robots_Client_Library/blob/master/doc/architecture.rst
+
 Library architecture
 ====================
 
@@ -11,6 +13,7 @@ well as a couple of standalone modules to directly use subsets of the library's 
    architecture/reverse_interface
    architecture/rtde_client
    architecture/script_command_interface
+   architecture/script_reader
    architecture/script_sender
    architecture/trajectory_point_interface
    architecture/ur_driver
@@ -24,5 +27,5 @@ The image below shows a rough architecture overview that should help developers 
 modules present in this library. Note that this is an incomplete view on the classes involved.
 
 .. image:: images/urcl_architecture.svg
-  :width: 100%
+  :width: 1200
   :alt: architecture overview
