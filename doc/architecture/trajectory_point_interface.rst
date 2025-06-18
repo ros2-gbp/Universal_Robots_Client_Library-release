@@ -1,3 +1,5 @@
+:github_url: https://github.com/UniversalRobots/Universal_Robots_Client_Library/blob/master/doc/architecture/trajectory_point_interface.rst
+
 .. _trajectory_point_interface:
 
 Trajectory Point Interface
@@ -9,7 +11,7 @@ be used in conjunction with the :ref:`reverse_interface` during trajectory forwa
 Communication regarding trajectory point execution would usually look like this:
 
 .. figure:: ../images/trajectory_interface.svg
-   :width: 100%
+   :width: 1200
    :alt: Trajectory interface
 
 Basically, the ``TrajectoryPointInterface`` transfers the trajectory points from the external
