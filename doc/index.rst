@@ -1,3 +1,7 @@
+:github_url: https://github.com/UniversalRobots/Universal_Robots_Client_Library/blob/master/doc/index.rst
+
+.. _ur_client_library:
+
 ur_client_library
 =================
 
@@ -16,3 +20,4 @@ can be found on `GitHub <https://github.com/UniversalRobots/Universal_Robots_Cli
    examples
    real_time
    migration_notes
+   api_reference
