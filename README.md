@@ -1,3 +1,26 @@
+## ur_client_library (humble) - 2.4.0-1
+
+The packages in the `ur_client_library` repository were released into the `humble` distro by running `/home/feex/.local/bin/bloom-release ur_client_library --rosdistro humble` on `Mon, 13 Oct 2025 18:44:41 -0000`
+
+The `ur_client_library` package was released.
+
+Version of package(s) in repository `ur_client_library`:
+
+- upstream repository: https://github.com/UniversalRobots/Universal_Robots_Client_Library
+- release repository: https://github.com/ros2-gbp/Universal_Robots_Client_Library-release.git
+- rosdistro version: `2.3.0-1`
+- old version: `2.3.0-1`
+- new version: `2.4.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.13.0`
+- catkin_pkg version: `1.0.0`
+- rosdep version: `0.26.0`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## ur_client_library (jazzy) - 2.4.0-1
 
 The packages in the `ur_client_library` repository were released into the `jazzy` distro by running `/home/feex/.local/bin/bloom-release ur_client_library --rosdistro jazzy` on `Mon, 13 Oct 2025 18:40:56 -0000`
