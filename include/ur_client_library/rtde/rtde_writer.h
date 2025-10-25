@@ -61,12 +61,17 @@ public:
 
   ~RTDEWriter()
   {
-    running_ = false;
-    if (writer_thread_.joinable())
-    {
-      writer_thread_.join();
-    }
+    stop();
   }
+
+  /*!
+   * \brief Sets a new input recipe. This can be used to change the input recipe on the fly, if
+   * needed.
+   *
+   * \param recipe The new recipe to use
+   */
+  void setInputRecipe(const std::vector<std::string>& recipe);
+
   /*!
    * \brief Starts the writer thread, which periodically clears the queue to write packages to the
    * robot.
@@ -78,6 +83,11 @@ public:
    * \brief The writer thread loop, continually serializing and sending packages to the robot.
    */
   void run();
+
+  /*!
+   * \brief Stops the writer thread loop.
+   */
+  void stop();
 
   /*!
    * \brief Creates a package to request setting a new value for the speed slider.
@@ -157,6 +167,18 @@ public:
    * \returns Success of the package creation
    */
   bool sendInputDoubleRegister(uint32_t register_id, double value);
+
+  /*!
+   * \brief Creates a package to request setting a new value for the robot's external force/torque
+   * interface.
+   *
+   * Note: This requires that the ft_rtde_input_enable() function was called on the robot side.
+   *
+   * \param external_force_torque The new external force/torque as a vector6d_t
+   *
+   * \returns Success of the package creation
+   */
+  bool sendExternalForceTorque(const vector6d_t& external_force_torque);
 
 private:
   uint8_t pinToMask(uint8_t pin);
