@@ -1,3 +1,26 @@
+## ur_client_library (jazzy) - 2.7.0-1
+
+The packages in the `ur_client_library` repository were released into the `jazzy` distro by running `/home/feex/.local/bin/bloom-release ur_client_library --rosdistro jazzy` on `Fri, 20 Feb 2026 14:47:50 -0000`
+
+The `ur_client_library` package was released.
+
+Version of package(s) in repository `ur_client_library`:
+
+- upstream repository: https://github.com/UniversalRobots/Universal_Robots_Client_Library
+- release repository: https://github.com/ros2-gbp/Universal_Robots_Client_Library-release.git
+- rosdistro version: `2.6.1-2`
+- old version: `2.6.1-2`
+- new version: `2.7.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.13.0`
+- catkin_pkg version: `1.0.0`
+- rosdep version: `0.26.0`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## ur_client_library (kilted) - 2.7.0-1
 
 The packages in the `ur_client_library` repository were released into the `kilted` distro by running `/home/feex/.local/bin/bloom-release ur_client_library --rosdistro kilted` on `Fri, 20 Feb 2026 14:19:36 -0000`
