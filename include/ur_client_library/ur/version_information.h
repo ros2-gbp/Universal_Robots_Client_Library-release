@@ -61,6 +61,14 @@ public:
 
   bool isESeries() const;
 
+  /*!
+   * \brief Checks whether the version information is empty (all fields zero)
+   */
+  bool isEmpty() const
+  {
+    return major == 0 && minor == 0 && bugfix == 0 && build == 0;
+  }
+
   friend bool operator==(const VersionInformation& v1, const VersionInformation& v2);
   friend bool operator!=(const VersionInformation& v1, const VersionInformation& v2);
   friend bool operator<(const VersionInformation& v1, const VersionInformation& v2);
@@ -79,7 +87,6 @@ public:
   uint32_t build;   ///< Build number
 };
 
-std::vector<std::string> splitString(std::string input, const std::string& delimiter = ".");
 }  // namespace urcl
 
 #endif  // ifndef UR_CLIENT_LIBRARY_UR_VERSION_INFORMATION_H_INCLUDED
