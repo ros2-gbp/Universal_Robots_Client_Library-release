@@ -167,10 +167,7 @@ std::string DashboardClientImplG5::read()
   {
     if (!TCPSocket::read((uint8_t*)&character, 1, read_chars))
     {
-      disconnect();
-      throw TimeoutException("Did not receive answer from dashboard server in time. Disconnecting from dashboard "
-                             "server.",
-                             *recv_timeout_);
+      throw TimeoutException("Did not receive answer from dashboard server in time.", *recv_timeout_);
     }
     result << character;
     if (character == '\n')
@@ -1187,6 +1184,31 @@ DashboardResponse DashboardClientImplG5::commandSaveLog()
     response.message = e.what();
   }
   return response;
+}
+
+DashboardResponse DashboardClientImplG5::commandGetProgramList()
+{
+  throw NotImplementedException("commandGetProgramList is not available for PolyScope " +
+                                polyscope_version_.toString() + ". It is supported from PolyScope 10.12.0 onwards.");
+}
+
+DashboardResponse DashboardClientImplG5::commandUploadProgram(const std::string& program_file_name)
+{
+  throw NotImplementedException("commandUploadProgram is not available for PolyScope " + polyscope_version_.toString() +
+                                ". It is supported from PolyScope 10.12.0 onwards.");
+}
+
+DashboardResponse DashboardClientImplG5::commandUpdateProgram(const std::string& program_file_name)
+{
+  throw NotImplementedException("commandUpdateProgram is not available for PolyScope " + polyscope_version_.toString() +
+                                ". It is supported from PolyScope 10.12.0 onwards.");
+}
+
+DashboardResponse DashboardClientImplG5::commandDownloadProgram(const std::string& program_file_name,
+                                                                const std::string& destination_path)
+{
+  throw NotImplementedException("commandDownloadProgram is not available for PolyScope " +
+                                polyscope_version_.toString() + ". It is supported from PolyScope 10.12.0 onwards.");
 }
 
 std::string DashboardClientImplG5::replacePayload(const std::string& command, const std::string& payload)
