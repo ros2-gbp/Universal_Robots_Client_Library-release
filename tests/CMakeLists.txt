@@ -14,18 +14,25 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+add_executable(fake_rtde_server fake_rtde_server.cpp fake_rtde_server_main.cpp)
+target_link_libraries(fake_rtde_server PRIVATE ur_client_library::urcl)
+
 include(GoogleTest)
 
 option(INTEGRATION_TESTS "Build the integration tests that require a running robot / URSim" OFF)
+option(POLYSCOPE_X_TESTS_WITH_REMOTE_CONTROL "Run Polyscope X tests that require remote control" OFF)
 # Build Tests
 if (INTEGRATION_TESTS)
   # Integration tests require a robot reachable at 192.168.56.101. Therefore, they have to be
   # activated separately.
   
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  if(POLYSCOPE_X_TESTS_WITH_REMOTE_CONTROL)
+    add_compile_definitions(POLYSCOPE_X_TESTS_WITH_REMOTE_CONTROL=1 )
+  endif()
 
   add_custom_target(generate_outputs ALL COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/resources/generate_rtde_outputs.py)
-  add_executable(rtde_tests test_rtde_client.cpp)
+  add_executable(rtde_tests test_rtde_client.cpp fake_rtde_server.cpp)
   add_dependencies(rtde_tests generate_outputs)
   target_link_libraries(rtde_tests PRIVATE ur_client_library::urcl GTest::gtest_main)
   gtest_add_tests(TARGET      rtde_tests
@@ -40,6 +47,7 @@ if (INTEGRATION_TESTS)
   add_executable(dashboard_client_x_tests test_dashboard_client_x.cpp)
   target_link_libraries(dashboard_client_x_tests PRIVATE ur_client_library::urcl GTest::gtest_main)
   gtest_add_tests(TARGET      dashboard_client_x_tests
+                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   )
 
   # Spline tests
@@ -90,20 +98,10 @@ if (INTEGRATION_TESTS)
                   TEST_SUFFIX _headless
   )
 
-  # PrimaryClient tests
-  add_executable(primary_client_test_urcap test_primary_client.cpp)
-  target_link_libraries(primary_client_test_urcap PRIVATE ur_client_library::urcl GTest::gtest_main)
-  gtest_add_tests(TARGET primary_client_test_urcap
-                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-                  EXTRA_ARGS --headless false
-                  TEST_SUFFIX _urcap
-  )
   add_executable(primary_client_test_headless test_primary_client.cpp)
   target_link_libraries(primary_client_test_headless PRIVATE ur_client_library::urcl GTest::gtest_main)
   gtest_add_tests(TARGET primary_client_test_headless
                   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-                  EXTRA_ARGS --headless true
-                  TEST_SUFFIX _headless
   )
 
   add_executable(ur_driver_deprecated_constructor_test test_deprecated_ur_driver_construction.cpp)
