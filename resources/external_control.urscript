@@ -57,6 +57,8 @@ END_TOOL_CONTACT = 6
 SET_FRICTION_COMPENSATION = 7
 FT_RTDE_INPUT_ENABLE = 8
 SET_GRAVITY = 9
+SET_TCP_OFFSET = 10
+SET_FRICTION_SCALES = 11
 SCRIPT_COMMAND_DATA_DIMENSION = 28
 
 FREEDRIVE_MODE_START = 1
@@ -74,6 +76,11 @@ MAX_JOINT_SPEED = 6.283185
 # Any motion commands resulting in a velocity higher than that will be ignored.
 JOINT_IGNORE_SPEED = 20.0
 
+# Friction compensation mode: which set command was received last (or NotSet if none)
+FRICTION_COMP_MODE_NOT_SET = 0
+FRICTION_COMP_MODE_FRICTION_LEGACY = 1
+FRICTION_COMP_MODE_FRICTION_SCALES = 2
+
 #Global variables are also showed in the Teach pendants variable list
 global violation_popup_counter = 0
 global cmd_servo_state = SERVO_UNINITIALIZED
@@ -90,12 +97,19 @@ global spline_qdd = [0, 0, 0, 0, 0, 0]
 global spline_qd = [0, 0, 0, 0, 0, 0]
 global tool_contact_running = False
 global trajectory_result = 0
-global friction_compensation_enabled = True
+global friction_compensation_mode = FRICTION_COMP_MODE_NOT_SET
+global deprecated_friction_compensation_enabled = True
+global viscous_scale = [0.9, 0.9, 0.8, 0.9, 0.9, 0.9]
+global coulomb_scale = [0.8, 0.8, 0.7, 0.8, 0.8, 0.8]
 
 # Global thread variables
 thread_move = 0
 thread_trajectory = 0
 thread_script_commands = 0
+thread_clear = 0
+
+# Global thread flags
+global trajectory_cleanup_running = False
 
 ###
 # @brief Function to verify whether the specified target can be reached within the defined time frame while staying within
@@ -245,16 +259,36 @@ thread torqueThread():
   textmsg("ExternalControl: Starting torque thread")
   while control_mode == MODE_TORQUE:
     torque = cmd_torque
-    {% if ROBOT_SOFTWARE_VERSION >= v5.23.0 %}
-      {% if ROBOT_SOFTWARE_VERSION < v6.0.0 %}
-    direct_torque(torque, friction_comp=friction_compensation_enabled)
-      {% elif ROBOT_SOFTWARE_VERSION >= v10.11.0 %}
-    direct_torque(torque, friction_comp=friction_compensation_enabled)
+    {% if ROBOT_SOFTWARE_VERSION < v6.0.0 %}
+      {% if ROBOT_SOFTWARE_VERSION >= v5.23.0 %}
+    if friction_compensation_mode == FRICTION_COMP_MODE_FRICTION_SCALES:
+        {% if ROBOT_SOFTWARE_VERSION < v5.25.1 %}
+      popup("Friction scales (viscous_scale/coulomb_scale) are supported from PolyScope 5.25.1. This robot runs an older version.", error=True, blocking=True)
+        {% else %}
+      direct_torque(torque, viscous_scale=viscous_scale, coulomb_scale=coulomb_scale)
+        {% endif %}
+    elif friction_compensation_mode == FRICTION_COMP_MODE_FRICTION_LEGACY:
+      direct_torque(torque, friction_comp=deprecated_friction_compensation_enabled)
+    else:
+      direct_torque(torque) # Uses robot defaults
+    end
       {% else %}
-    popup("Torque control is only supported from software 10.11.0 and upwards.", error=True, blocking=True)
-      {% endif %}
-    {% else %}
     popup("Torque control is only supported from software 5.23.0 and upwards.", error=True, blocking=True)
+      {% endif %}
+    {% elif ROBOT_SOFTWARE_VERSION >= v10.11.0 %}
+    if friction_compensation_mode == FRICTION_COMP_MODE_FRICTION_SCALES:
+      {% if ROBOT_SOFTWARE_VERSION < v10.12.1 %}
+      popup("Friction scales (viscous_scale/coulomb_scale) are supported from PolyScope X 10.12.1. This robot runs an older version.", error=True, blocking=True)
+      {% else %}
+      direct_torque(torque, viscous_scale=viscous_scale, coulomb_scale=coulomb_scale)
+      {% endif %}
+    elif friction_compensation_mode == FRICTION_COMP_MODE_FRICTION_LEGACY:
+      direct_torque(torque, friction_comp=deprecated_friction_compensation_enabled)
+    else:
+      direct_torque(torque) # Uses robot defaults
+    end
+    {% else %}
+    popup("Torque control is only supported from software 10.11.0 and upwards.", error=True, blocking=True)
     {% endif %}
   end
   textmsg("ExternalControl: torque thread ended")
@@ -584,7 +618,9 @@ thread trajectoryThread():
           is_robot_moving = quinticSplineRun(q, qd, qdd, tmptime, is_last_point, is_first_point)
         else:
           textmsg("Unknown spline type given:", raw_point[INDEX_POINT_TYPE])
-          clear_remaining_trajectory_points()
+          request_trajectory_cleanup()
+          stopj(STOPJ_ACCELERATION)
+          wait_for_trajectory_cleanup()
           trajectory_result = TRAJECTORY_RESULT_FAILURE
         end
 
@@ -657,11 +693,48 @@ thread trajectoryThread():
   textmsg("Trajectory finished with result ", trajectory_result_to_str(trajectory_result))
 end
 
-def clear_remaining_trajectory_points():
+# Thread to cleanup the remaining trajectory_points_left when trajectory canceled
+thread clearTrajectoryPointsThread():
+  local reads = 0
+  local limit = 0
+  local timeout = 0.5
+
+  {% if ROBOT_SOFTWARE_VERSION >= v10.0.0 %}
+    limit = 20
+  {% else %}
+    limit = 10
+  {% endif %}  
+  
   while trajectory_points_left > 0:
-    raw_point = socket_read_binary_integer(TRAJECTORY_DATA_DIMENSION + 2, "trajectory_socket")
+    raw_point = socket_read_binary_integer(TRAJECTORY_DATA_DIMENSION + 2, "trajectory_socket", timeout)
+    if raw_point[0] <= 0:
+      trajectory_points_left = 0
+      textmsg("No more trajectory points in the buffer. Resetting trajectory_points_left to 0.")
+      break
+    end
     trajectory_points_left = trajectory_points_left - 1
+    reads = reads + 1
+    if reads >= limit:
+      sync()            
+      reads = 0
+    end
   end
+  textmsg("Trajectory point buffer cleared successfully.")
+  trajectory_cleanup_running = False
+end
+
+# Checks that the thread is only called once
+def request_trajectory_cleanup():
+  if not trajectory_cleanup_running:
+    trajectory_cleanup_running = True
+    thread_clear = run clearTrajectoryPointsThread()
+  end
+end
+
+# Wait until the trajectory cleanup has finished
+def wait_for_trajectory_cleanup():
+  join thread_clear
+  thread_clear = 0
 end
 
 # Helpers for speed control
@@ -725,7 +798,7 @@ def tool_contact_detection():
   if step_back > 0:
     if control_mode == MODE_FORWARD:
       kill thread_trajectory
-      clear_remaining_trajectory_points()
+      request_trajectory_cleanup()
     elif control_mode == MODE_FREEDRIVE:
       textmsg("Leaving freedrive mode")
       end_freedrive_mode()
@@ -736,7 +809,7 @@ def tool_contact_detection():
     # Set control mode to tool in contact, should be cleared by stopping tool contact detection
     control_mode = MODE_TOOL_IN_CONTACT
     stopl(3)
-
+    wait_for_trajectory_cleanup()
     # Move to initial contact point
     q = get_actual_joint_positions_history(step_back)
     movel(q)
@@ -788,11 +861,12 @@ thread script_commands():
         end
         tool_contact_running = False
       elif command == SET_FRICTION_COMPENSATION:
-        if raw_command[2] == 0:
-          friction_compensation_enabled = False
-        else:
-          friction_compensation_enabled = True
-        end
+        friction_compensation_mode = FRICTION_COMP_MODE_FRICTION_LEGACY
+        deprecated_friction_compensation_enabled = (raw_command[2] != 0)
+      elif command == SET_FRICTION_SCALES:
+        friction_compensation_mode = FRICTION_COMP_MODE_FRICTION_SCALES
+        viscous_scale = [raw_command[2] / MULT_jointstate, raw_command[3] / MULT_jointstate, raw_command[4] / MULT_jointstate, raw_command[5] / MULT_jointstate, raw_command[6] / MULT_jointstate, raw_command[7] / MULT_jointstate]
+        coulomb_scale = [raw_command[8] / MULT_jointstate, raw_command[9] / MULT_jointstate, raw_command[10] / MULT_jointstate, raw_command[11] / MULT_jointstate, raw_command[12] / MULT_jointstate, raw_command[13] / MULT_jointstate]
       elif command == FT_RTDE_INPUT_ENABLE:
         if raw_command[2] == 0:
           enabled = False
@@ -822,22 +896,89 @@ thread script_commands():
         # This has a known error that the resulting torques are computed with opposite sign.
         enable_external_ft_sensor(enabled, sensor_mass, sensor_offset, sensor_cog)
         {% endif %}
+      elif command == SET_TCP_OFFSET:
+        tcp_offset = p[raw_command[2] / MULT_jointstate, raw_command[3] / MULT_jointstate, raw_command[4] / MULT_jointstate, raw_command[5] / MULT_jointstate, raw_command[6] / MULT_jointstate, raw_command[7] / MULT_jointstate]
+        set_tcp(tcp_offset)
       end
     end
   end
 end
 
+###
+# @brief Attempts to open a socket connection multiple times until success or max attempts are reached.
+#
+# Tries to establish a TCP socket connection to the specified host and port using the provided names.
+# Between attempts, the function waits for a fixed duration (dt). If a connection is established
+# before reaching the maximum number of attempts, the function returns True, otherwise it returns False.
+#
+# @param host           string   The target server IP or hostname to connect to.
+# @param port           number   The TCP port number on the server.
+# @param name           string   The name used to identify the socket in URScript.
+# @param max_attempts   number   Maximum number of connection attempts (default: 5).
+# @param dt             number   Delay in seconds between attempts (default: 0.2 s).
+#
+# @returns bool True if the socket was successfully opened, False otherwise.
+###
+def connect_socket_with_retry(host, port, name, max_attempts=5, dt=0.2):
+  attempt = 0
+  while attempt < max_attempts:
+    if socket_open(host, port, name):
+      textmsg("Successfully connected to ", name)
+      return True
+    end
+    sleep(dt)
+    attempt = attempt + 1
+  end
+  return False
+end
+
 # HEADER_END
 
 # NODE_CONTROL_LOOP_BEGINS
-socket_open("{{SERVER_IP_REPLACE}}", {{TRAJECTORY_SERVER_PORT_REPLACE}}, "trajectory_socket")
-socket_open("{{SERVER_IP_REPLACE}}", {{SCRIPT_COMMAND_SERVER_PORT_REPLACE}}, "script_command_socket")
-# This socket should be opened last as it tells the driver when it has control over the robot
-socket_open("{{SERVER_IP_REPLACE}}", {{SERVER_PORT_REPLACE}}, "reverse_socket")
+
+# Attempt to establish the three required socket connections, if at least one socket is still disconnected, 
+# a popup is shown and the loop continues until all three flags are True.
+traj_flag = False
+com_flag = False
+rev_flag = False
+while not (traj_flag and com_flag and rev_flag):
+  if not traj_flag: 
+    traj_flag = connect_socket_with_retry("{{SERVER_IP_REPLACE}}", {{TRAJECTORY_SERVER_PORT_REPLACE}}, "trajectory_socket")
+  end
+
+  if traj_flag and not com_flag: 
+    com_flag = connect_socket_with_retry("{{SERVER_IP_REPLACE}}", {{SCRIPT_COMMAND_SERVER_PORT_REPLACE}}, "script_command_socket")
+  end
+
+  if traj_flag and com_flag and not rev_flag:
+    rev_flag = connect_socket_with_retry("{{SERVER_IP_REPLACE}}", {{SERVER_PORT_REPLACE}}, "reverse_socket")
+  end
+
+  if not (traj_flag and com_flag and rev_flag):
+    error_str = str_cat(
+        str_cat("Trajectory socket ({{TRAJECTORY_SERVER_PORT_REPLACE}}) connected: ", traj_flag), str_cat(
+          str_cat("<br/>Script command socket ({{SCRIPT_COMMAND_SERVER_PORT_REPLACE}}) connected: ", com_flag), str_cat(
+            str_cat("<br/>Reverse socket ({{SERVER_PORT_REPLACE}}) connected: ", rev_flag),
+            "<br/><br/>Please check that the external control end at {{SERVER_IP_REPLACE}} is running correctly. Press 'Continue' to retry.")))
+
+    if traj_flag:
+      socket_close("trajectory_socket")
+      traj_flag = False
+    end
+
+    if com_flag:
+      socket_close("script_command_socket")
+      com_flag = False
+    end
+
+    popup(error_str, title="Error connecting to remote", blocking=True, error=True)
+  end
+end
 
 control_mode = MODE_UNINITIALIZED
 thread_move = 0
 thread_trajectory = 0
+thread_clear = 0
 trajectory_points_left = 0
 textmsg("ExternalControl: External control active")
 global read_timeout = 0.0 # First read is blocking
@@ -855,8 +996,9 @@ while control_mode > MODE_STOPPED:
       if control_mode == MODE_FORWARD:
         kill thread_trajectory
         if trajectory_points_left > 0:
-          clear_remaining_trajectory_points()
+          request_trajectory_cleanup()
           stopj(STOPJ_ACCELERATION)
+          wait_for_trajectory_cleanup()
           socket_send_int(TRAJECTORY_RESULT_CANCELED, "trajectory_socket")
         end
         # Stop freedrive
@@ -903,16 +1045,21 @@ while control_mode > MODE_STOPPED:
       torque = [params_mult[2]/ MULT_jointstate, params_mult[3]/ MULT_jointstate, params_mult[4]/ MULT_jointstate, params_mult[5]/ MULT_jointstate, params_mult[6]/ MULT_jointstate, params_mult[7]/ MULT_jointstate]
       set_torque(torque)
     elif control_mode == MODE_FORWARD:
-      if params_mult[2] == TRAJECTORY_MODE_RECEIVE:
+      if trajectory_cleanup_running:
+          textmsg("Trajectory buffer cleanup in progress, new trajectory ignored")
+          popup("Trajectory buffer cleanup in progress, new trajectory ignored", error = True, blocking = True)
+      elif params_mult[2] == TRAJECTORY_MODE_RECEIVE:
         kill thread_trajectory
-        clear_remaining_trajectory_points()
+        request_trajectory_cleanup()
+        wait_for_trajectory_cleanup()
         trajectory_points_left = params_mult[3]
         thread_trajectory = run trajectoryThread()
       elif params_mult[2] == TRAJECTORY_MODE_CANCEL:
         textmsg("cancel received")
         kill thread_trajectory
-        clear_remaining_trajectory_points()
+        request_trajectory_cleanup()
         stopj(STOPJ_ACCELERATION)
+        wait_for_trajectory_cleanup()
         socket_send_int(TRAJECTORY_RESULT_CANCELED, "trajectory_socket")
       end
     elif control_mode == MODE_SPEEDL:
@@ -936,7 +1083,8 @@ while control_mode > MODE_STOPPED:
     end
   else:
     textmsg("Socket timed out waiting for command on reverse_socket. The script will exit now.")
-    control_mode = MODE_STOPPED
+    stopj(STOPJ_ACCELERATION)
+    halt
   end
   exit_critical
 end
