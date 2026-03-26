@@ -215,8 +215,9 @@ public:
    * failed. Unlimited number of attempts when set to 0.
    * \param reconnection_time time in between connection attempts to the server
    */
-  virtual void setupProducer(const size_t max_num_tries = 0,
-                             const std::chrono::milliseconds reconnection_time = std::chrono::seconds(10))
+  virtual void
+  setupProducer([[maybe_unused]] const size_t max_num_tries = 0,
+                [[maybe_unused]] const std::chrono::milliseconds reconnection_time = std::chrono::seconds(10))
   {
   }
   /*!
@@ -245,6 +246,17 @@ public:
    * \returns Success of the package production.
    */
   virtual bool tryGet(std::vector<std::unique_ptr<T>>& products) = 0;
+
+  /*!
+   * \brief Reads a single package from some source and produces the corresponding object.
+   *
+   * If possible this function should try to reuse existing memory in the passed unique pointer.
+   *
+   * \param product Unique pointer to be set to the produced package.
+   *
+   * \returns Success of the package production.
+   */
+  virtual bool tryGet(std::unique_ptr<T>& product) = 0;
 };
 
 /*!
@@ -256,13 +268,13 @@ public:
   /*!
    * \brief Start notification.
    */
-  virtual void started(std::string name)
+  virtual void started([[maybe_unused]] std::string name)
   {
   }
   /*!
    * \brief Stop notification.
    */
-  virtual void stopped(std::string name)
+  virtual void stopped([[maybe_unused]] std::string name)
   {
   }
 };
