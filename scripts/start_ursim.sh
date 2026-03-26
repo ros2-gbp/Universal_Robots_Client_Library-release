@@ -54,7 +54,7 @@ help()
   echo "    -n             Name of the docker container. Defaults to '$CONTAINER_NAME'"
   echo "    -i             IP address the container should get. Defaults to $IP_ADDRESS"
   echo "    -d             Detached mode - start in background"
-  echo "    -f             Specify port forwarding to use. Defaults to '$PORT_FORWARDING'. Set to empty string to disable port forwarding."
+  echo "    -f             Specify port forwarding to use. Defaults to '$PORT_FORWARDING'. Set to \"DISABLED\" to disable port forwarding."
   echo "    -h             Print this Help."
   echo
 }
@@ -129,11 +129,7 @@ strip_robot_model()
     if [[ "$robot_model" = @(ur3e|ur5e|ur10e|ur16e) ]]; then
       ROBOT_MODEL=$(echo "${ROBOT_MODEL:0:$((${#ROBOT_MODEL}-1))}")
     elif [[ "$robot_model" = @(ur7e|ur12e) ]]; then
-      if [[ "$robot_series" == "polyscopex" ]]; then
-        ROBOT_MODEL=$(echo "${ROBOT_MODEL:0:$((${#ROBOT_MODEL}-1))}")
-      else
-        ROBOT_MODEL=$(echo "${ROBOT_MODEL:0:$((${#ROBOT_MODEL}-1))}e")
-      fi
+      ROBOT_MODEL=$(echo "${ROBOT_MODEL:0:$((${#ROBOT_MODEL}-1))}e")
     fi
   fi
 }
@@ -429,6 +425,11 @@ main() {
     else
       PORT_FORWARDING=$PORT_FORWARDING_WITH_DASHBOARD
     fi
+  fi
+
+  if [ "$PORT_FORWARDING" == "DISABLED" ]; then
+    echo "Port forwarding disabled"
+    PORT_FORWARDING=""
   fi
 
   DOCKER_ARGS=""
