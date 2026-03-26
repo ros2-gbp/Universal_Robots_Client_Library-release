@@ -49,6 +49,22 @@ public:
   PrimaryParser() = default;
   virtual ~PrimaryParser() = default;
 
+  /**!
+   * \brief Set the strict mode for parsing. If strict mode is enabled, the parser will throw an
+   * exception if a sub-package is not parsed completely. If strict mode is disabled, the parser
+   * will just log a warning and continue parsing the next sub-package.
+   *
+   * Strict mode is meant for testing only, as it may break existing applications when running
+   * against a newer software version that adds new fields to existing packages, which would lead
+   * to parsing errors of the respective sub-package.
+   *
+   * \param strict_mode Whether to enable strict mode or not.
+   */
+  void setStrictMode(bool strict_mode)
+  {
+    strict_mode_ = strict_mode;
+  }
+
   /*!
    * \brief Uses the given BinParser to create package objects from the contained serialization.
    *
@@ -58,7 +74,7 @@ public:
    * \returns True, if the byte stream could successfully be parsed as primary packages, false
    * otherwise
    */
-  bool parse(comm::BinParser& bp, std::vector<std::unique_ptr<PrimaryPackage>>& results)
+  bool parse(comm::BinParser& bp, std::vector<std::unique_ptr<PrimaryPackage>>& results) override
   {
     int32_t packet_size;
     RobotPackageType type;
@@ -86,10 +102,10 @@ public:
           // deconstruction of a sub parser will increment the position of the parent parser
           comm::BinParser sbp(bp, sub_size);
           sbp.consume(sizeof(sub_size));
-          RobotStateType type;
-          sbp.parse(type);
+          RobotStateType sub_type;
+          sbp.parse(sub_type);
 
-          std::unique_ptr<PrimaryPackage> packet(stateFromType(type));
+          std::unique_ptr<PrimaryPackage> packet(stateFromType(sub_type));
 
           if (packet == nullptr)
           {
@@ -101,7 +117,7 @@ public:
 
           if (!packet->parseWith(sbp))
           {
-            URCL_LOG_ERROR("Sub-package parsing of type %d failed!", static_cast<int>(type));
+            URCL_LOG_ERROR("Sub-package parsing of type %d failed!", static_cast<int>(sub_type));
             return false;
           }
 
@@ -109,9 +125,14 @@ public:
 
           if (!sbp.empty())
           {
-            URCL_LOG_ERROR("Sub-package of type %d was not parsed completely!", static_cast<int>(type));
             sbp.debug();
-            return false;
+            if (strict_mode_)
+            {
+              throw UrException("Sub-package of type " + std::string(robotStateString(sub_type)) +
+                                " was not parsed completely, and strict mode is enabled, so aborting parsing!");
+            }
+            URCL_LOG_WARN("Sub-package of type %s was not parsed completely!", robotStateString(sub_type));
+            sbp.consume();
           }
         }
 
@@ -147,6 +168,36 @@ public:
         return true;
       }
     }
+    return true;
+  }
+
+  /**
+   * \brief Uses the given BinParser to create a single package object from the contained serialization.
+   *
+   * Note: This function assumes that the byte stream contains exactly one primary package. For
+   * packages with sub-packages this will return false.
+   *
+   * \param bp A BinParser holding one serialized primary package
+   * \param results A unique pointer to hold the created primary package object
+   *
+   * \returns True, if the byte stream could successfully be parsed as a primary package, false
+   * otherwise
+   */
+  bool parse(comm::BinParser& bp, std::unique_ptr<PrimaryPackage>& results) override
+  {
+    std::vector<std::unique_ptr<PrimaryPackage>> packages;
+    if (!parse(bp, packages))
+    {
+      return false;
+    }
+
+    if (packages.size() != 1)
+    {
+      URCL_LOG_ERROR("Expected exactly one primary package, but received %zu", packages.size());
+      return false;
+    }
+
+    results = std::move(packages[0]);
     return true;
   }
 
@@ -194,6 +245,10 @@ private:
         return new RobotMessage(timestamp, source, type);
     }
   }
+
+  bool strict_mode_ = false;  //!< If true, the parser will return false if it encounters unknown
+  // package types or sub-package types. If false, it will ignore unknown types and try to continue
+  // parsing.
 };
 
 }  // namespace primary_interface

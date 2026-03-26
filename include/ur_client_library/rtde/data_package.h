@@ -29,6 +29,7 @@
 #ifndef UR_CLIENT_LIBRARY_DATA_PACKAGE_H_INCLUDED
 #define UR_CLIENT_LIBRARY_DATA_PACKAGE_H_INCLUDED
 
+#include <algorithm>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -97,6 +98,7 @@ public:
   DataPackage(const std::vector<std::string>& recipe, const uint16_t& protocol_version = 2)
     : RTDEPackage(PackageType::RTDE_DATA_PACKAGE), recipe_(recipe), protocol_version_(protocol_version)
   {
+    initEmpty();
   }
 
   virtual ~DataPackage() = default;
@@ -144,9 +146,13 @@ public:
   template <typename T>
   bool getData(const std::string& name, T& val) const
   {
-    if (data_.find(name) != data_.end())
+    const auto it =
+        std::find_if(data_.begin(), data_.end(), [&name](const std::pair<std::string, _rtde_type_variant>& element) {
+          return element.first == name;
+        });
+    if (it != data_.end())
     {
-      val = std::get<T>(data_.at(name));
+      val = std::get<T>(it->second);
     }
     else
     {
@@ -170,9 +176,13 @@ public:
   {
     static_assert(sizeof(T) * 8 >= N, "Bitset is too large for underlying variable");
 
-    if (data_.find(name) != data_.end())
+    const auto it =
+        std::find_if(data_.begin(), data_.end(), [&name](const std::pair<std::string, _rtde_type_variant>& element) {
+          return element.first == name;
+        });
+    if (it != data_.end())
     {
-      val = std::bitset<N>(std::get<T>(data_.at(name)));
+      val = std::bitset<N>(std::get<T>(it->second));
     }
     else
     {
@@ -192,11 +202,22 @@ public:
    * \returns True on success, false if the field cannot be found inside the package.
    */
   template <typename T>
-  bool setData(const std::string& name, T& val)
+  bool setData(const std::string& name, const T& val)
   {
-    if (data_.find(name) != data_.end())
+    const auto it =
+        std::find_if(data_.begin(), data_.end(), [&name](const std::pair<std::string, _rtde_type_variant>& element) {
+          return element.first == name;
+        });
+    if (it != data_.end())
     {
-      data_.at(name) = val;
+      if (!std::holds_alternative<T>(it->second))
+      {
+        // TODO: It might be better to replace the return type by void and use exceptions for the
+        // error case.
+        URCL_LOG_ERROR("Type of passed data doesn't match type of existing field for index '%s'", name.c_str());
+        return false;
+      }
+      it->second = val;
     }
     else
     {
@@ -219,7 +240,7 @@ private:
   // Const would be better here
   static std::unordered_map<std::string, _rtde_type_variant> g_type_list;
   uint8_t recipe_id_;
-  std::unordered_map<std::string, _rtde_type_variant> data_;
+  std::vector<std::pair<std::string, _rtde_type_variant>> data_;
   std::vector<std::string> recipe_;
   uint16_t protocol_version_;
 };
