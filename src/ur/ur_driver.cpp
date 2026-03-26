@@ -188,6 +188,13 @@ void UrDriver::init(const UrDriverConfiguration& config)
   URCL_LOG_DEBUG("Initialization done");
 }
 
+#ifdef __GNUC__
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#  pragma warning(push)
+#  pragma warning(disable : 4996)
+#endif
 std::unique_ptr<rtde_interface::DataPackage> urcl::UrDriver::getDataPackage()
 {
   // This can take one of two values, 0ms or 100ms. The large timeout is for when the robot is commanding the control
@@ -196,6 +203,25 @@ std::unique_ptr<rtde_interface::DataPackage> urcl::UrDriver::getDataPackage()
   std::chrono::milliseconds timeout(get_packet_timeout_);
 
   return rtde_client_->getDataPackage(timeout);
+}
+#ifdef __GNUC__
+#  pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#  pragma warning(pop)
+#endif
+
+bool UrDriver::getDataPackage(rtde_interface::DataPackage& data_package)
+{
+  // This can take one of two values, 0ms or 100ms. The large timeout is for when the robot is commanding the control
+  // loop's timing (read is blocking). The zero timeout is for when the robot is sharing a control loop with
+  // something else (combined_robot_hw)
+  std::chrono::milliseconds timeout(get_packet_timeout_);
+  return rtde_client_->getDataPackage(data_package, timeout);
+}
+
+bool UrDriver::getDataPackageBlocking(std::unique_ptr<rtde_interface::DataPackage>& data_package)
+{
+  return rtde_client_->getDataPackageBlocking(data_package);
 }
 
 bool UrDriver::writeJointCommand(const vector6d_t& values, const comm::ControlMode control_mode,
@@ -520,7 +546,7 @@ bool UrDriver::startToolContact()
   else
   {
     URCL_LOG_ERROR("Script command interface is not running. Unable to enable tool contact mode.");
-    return 0;
+    return false;
   }
 }
 
@@ -543,7 +569,7 @@ bool UrDriver::endToolContact()
   else
   {
     URCL_LOG_ERROR("Script command interface is not running. Unable to end tool contact mode.");
-    return 0;
+    return false;
   }
 }
 
@@ -556,7 +582,20 @@ bool UrDriver::setFrictionCompensation(const bool friction_compensation_enabled)
   else
   {
     URCL_LOG_ERROR("Script command interface is not running. Unable to set friction compensation.");
-    return 0;
+    return false;
+  }
+}
+
+bool UrDriver::setFrictionScales(const vector6d_t& viscous_scale, const vector6d_t& coulomb_scale)
+{
+  if (script_command_interface_->clientConnected())
+  {
+    return script_command_interface_->setFrictionScales(viscous_scale, coulomb_scale);
+  }
+  else
+  {
+    URCL_LOG_ERROR("Script command interface is not running. Unable to set friction scales.");
+    return false;
   }
 }
 
@@ -570,7 +609,20 @@ bool UrDriver::ftRtdeInputEnable(const bool enabled, const double sensor_mass,
   else
   {
     URCL_LOG_ERROR("Script command interface is not running. Unable to set ft_rtde_input_enable.");
-    return 0;
+    return false;
+  }
+}
+
+bool UrDriver::setTcpOffset(const vector6d_t& tcp_offset)
+{
+  if (script_command_interface_->clientConnected())
+  {
+    return script_command_interface_->setTcpOffset(tcp_offset);
+  }
+  else
+  {
+    URCL_LOG_ERROR("Script command interface is not running. Unable to set TCP offset.");
+    return false;
   }
 }
 
@@ -580,9 +632,9 @@ bool UrDriver::writeKeepalive(const RobotReceiveTimeout& robot_receive_timeout)
   return reverse_interface_->write(fake, comm::ControlMode::MODE_IDLE, robot_receive_timeout);
 }
 
-void UrDriver::startRTDECommunication()
+void UrDriver::startRTDECommunication(const bool read_packages_in_background)
 {
-  rtde_client_->start();
+  rtde_client_->start(read_packages_in_background);
 }
 
 bool UrDriver::stopControl()
@@ -657,10 +709,19 @@ void UrDriver::setKeepaliveCount(const uint32_t count)
                 "read timeout in the write commands directly. This keepalive count will overwrite the timeout passed "
                 "to the write functions.");
 // TODO: Remove 2027-05
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#ifdef _MSC_VER
+#  pragma warning(push)
+#  pragma warning(disable : 4996)
+#else
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
   reverse_interface_->setKeepaliveCount(count);
-#pragma GCC diagnostic pop
+#ifdef _MSC_VER
+#  pragma warning(pop)
+#else
+#  pragma GCC diagnostic pop
+#endif
 }
 
 void UrDriver::resetRTDEClient(const std::vector<std::string>& output_recipe,
