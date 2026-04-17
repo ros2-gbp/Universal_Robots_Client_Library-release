@@ -26,14 +26,56 @@
  */
 //----------------------------------------------------------------------
 
+#include <cassert>
+#include <iostream>
+#include <vector>
 #include <gtest/gtest.h>
 #include <string.h>
 
 #include <ur_client_library/comm/bin_parser.h>
+#include <ur_client_library/primary/package_header.h>
 #include <ur_client_library/primary/primary_parser.h>
+#include <ur_client_library/primary/robot_state/configuration_data.h>
 #include "ur_client_library/primary/robot_message/key_message.h"
 
 using namespace urcl;
+
+namespace
+{
+// ConfigurationData payload before optional int16 reserved fields (older UR software).
+constexpr size_t kConfigurationDataPayloadBytes = 6 * 2 * sizeof(double) +  // joint position limits
+                                                  6 * 2 * sizeof(double) +  // joint motion limits
+                                                  5 * sizeof(double) +      // v/a joint/tool defaults + eq_radius
+                                                  4 * 6 * sizeof(double) +  // dh_a, dh_d, dh_alpha, dh_theta
+                                                  4 * sizeof(int32_t);  // masterboard, controller, robot type, sub type
+
+static_assert(kConfigurationDataPayloadBytes == 440);
+
+std::vector<uint8_t> makeRobotStatePacketWithConfigurationSubmessage(const std::vector<uint8_t>& configuration_payload)
+{
+  const uint32_t sub_size = static_cast<uint32_t>(sizeof(uint32_t) + sizeof(uint8_t) + configuration_payload.size());
+  const uint32_t total_packet_size = static_cast<uint32_t>(sizeof(int32_t) + sizeof(uint8_t) + sub_size);
+
+  std::vector<uint8_t> packet(total_packet_size);
+  size_t offset = 0;
+  packet[offset++] = static_cast<uint8_t>((total_packet_size >> 24) & 0xFF);
+  packet[offset++] = static_cast<uint8_t>((total_packet_size >> 16) & 0xFF);
+  packet[offset++] = static_cast<uint8_t>((total_packet_size >> 8) & 0xFF);
+  packet[offset++] = static_cast<uint8_t>(total_packet_size & 0xFF);
+  packet[offset++] = static_cast<uint8_t>(primary_interface::RobotPackageType::ROBOT_STATE);
+
+  packet[offset++] = static_cast<uint8_t>((sub_size >> 24) & 0xFF);
+  packet[offset++] = static_cast<uint8_t>((sub_size >> 16) & 0xFF);
+  packet[offset++] = static_cast<uint8_t>((sub_size >> 8) & 0xFF);
+  packet[offset++] = static_cast<uint8_t>(sub_size & 0xFF);
+  packet[offset++] = static_cast<uint8_t>(primary_interface::RobotStateType::CONFIGURATION_DATA);
+
+  memcpy(packet.data() + offset, configuration_payload.data(), configuration_payload.size());
+  offset += configuration_payload.size();
+  assert(offset == packet.size());
+  return packet;
+}
+}  // namespace
 
 /* First RobotState of UR5e from URSim v5.8
  *
@@ -180,6 +222,52 @@ const unsigned char RUNTIME_EXCEPTION_MESSAGE[] = {
   // message: "compile_error_name_not_found:txtmsg:"
   0x63, 0x6f, 0x6d, 0x70, 0x69, 0x6c, 0x65, 0x5f, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x5f,
   0x6e, 0x6f, 0x74, 0x5f, 0x66, 0x6f, 0x75, 0x6e, 0x64, 0x3a, 0x74, 0x78, 0x74, 0x6d, 0x73, 0x67, 0x3a
+};
+
+const unsigned char SAFETY_MODE_MESSAGE[] = {
+  // message size
+  0x00, 0x00, 0x00, 0x20,
+  // message type robot message
+  0x14,
+  // timestamp
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  // source
+  0xfd,
+  // robot_message_type SAFETY_MODE
+  0x05,
+  // Robot message code
+  0x00, 0x00, 0x00, 0x00,
+  // Robot message argument
+  0x00, 0x00, 0x00, 0x00,
+  // Safety mode type
+  0x03,
+  // Report data type
+  0x00, 0x00, 0x00, 0x00,
+  // Report data
+  0x00, 0x00, 0x00, 0x01
+};
+
+const unsigned char SAFETY_MODE_MESSAGE_STRING[] = {
+  // message size
+  0x00, 0x00, 0x00, 0x20,
+  // message type robot message
+  0x14,
+  // timestamp
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  // source
+  0xfd,
+  // robot_message_type SAFETY_MODE
+  0x05,
+  // Robot message code
+  0x00, 0x00, 0x00, 0x00,
+  // Robot message argument
+  0x00, 0x00, 0x00, 0x00,
+  // Safety mode type
+  0x03,
+  // Report data type
+  0x00, 0x00, 0x00, 0x00,
+  // Report data
+  0x80, 0x07, 0x06, 0x05
 };
 
 class PrimaryParserTest : public ::testing::Test
@@ -386,6 +474,158 @@ TEST_F(PrimaryParserTest, parse_robot_state_with_oversized_submessage)
     EXPECT_EQ(ki->calibration_status_, 0u);
     EXPECT_EQ(ki->dh_theta_, vector6d_t({ 0, 0, 0, 0, 0, 0 }));
   }
+}
+
+TEST_F(PrimaryParserTest, parse_safetymode_msg)
+{
+  unsigned char raw_data[sizeof(SAFETY_MODE_MESSAGE)];
+  memcpy(raw_data, SAFETY_MODE_MESSAGE, sizeof(SAFETY_MODE_MESSAGE));
+  comm::BinParser bp(raw_data, sizeof(raw_data));
+
+  std::vector<std::unique_ptr<primary_interface::PrimaryPackage>> products;
+  ASSERT_TRUE(parser_.parse(bp, products));
+  ASSERT_EQ(products.size(), 1);
+
+  if (primary_interface::SafetyModeMessage* data =
+          dynamic_cast<primary_interface::SafetyModeMessage*>(products[0].get()))
+  {
+    EXPECT_EQ(data->message_code_, 0);
+    EXPECT_EQ(data->message_argument_, 0);
+    EXPECT_EQ(data->safety_mode_type_, urcl::SafetyMode::PROTECTIVE_STOP);  // 3
+    EXPECT_EQ(data->report_data_type_, 0);
+    EXPECT_EQ(std::get<uint32_t>(data->report_data_), 1);
+
+    primary_interface::SafetyModeMessage clone = *data;
+    EXPECT_EQ(data->message_code_, clone.message_code_);
+    EXPECT_EQ(data->message_argument_, clone.message_argument_);
+    EXPECT_EQ(data->safety_mode_type_, clone.safety_mode_type_);
+    EXPECT_EQ(data->report_data_type_, clone.report_data_type_);
+    EXPECT_EQ(data->report_data_, clone.report_data_);
+  }
+
+  // Test all report data types
+  for (unsigned char i = 1; i < 5; i++)
+  {
+    memcpy(raw_data, SAFETY_MODE_MESSAGE, sizeof(SAFETY_MODE_MESSAGE));
+    raw_data[27] = i;
+    // Make negative number
+    if (i == 2)
+    {
+      raw_data[28] ^= 0xff;
+      raw_data[29] ^= 0xff;
+      raw_data[30] ^= 0xff;
+      raw_data[31] ^= 0xff;
+    }
+    comm::BinParser bp_loop(raw_data, sizeof(raw_data));
+    std::vector<std::unique_ptr<primary_interface::PrimaryPackage>> products_loop;
+    ASSERT_TRUE(parser_.parse(bp_loop, products_loop));
+    ASSERT_EQ(products_loop.size(), 1);
+
+    if (primary_interface::SafetyModeMessage* data_loop =
+            dynamic_cast<primary_interface::SafetyModeMessage*>(products_loop[0].get()))
+    {
+      EXPECT_EQ(data_loop->report_data_type_, static_cast<uint32_t>(i));
+      if (data_loop->report_data_type_ == 2)
+      {
+        EXPECT_EQ(std::get<int32_t>(data_loop->report_data_), -2);
+      }
+      else if (data_loop->report_data_type_ == 3)
+      {
+        EXPECT_EQ(std::get<float>(data_loop->report_data_), float(2.3509887e-38));
+      }
+      else
+      {
+        EXPECT_EQ(std::get<uint32_t>(data_loop->report_data_), 1);
+      }
+    }
+  }
+}
+
+std::string construct_string(int data_type, std::string data)
+{
+  std::stringstream ss;
+  ss << "SafetyModeMessage\n";
+  ss << "Message code: 0\n";
+  ss << "Message argument: 0\n";
+  ss << "Safety mode type: 3\n";
+  ss << "Report data type: " << data_type << "\n";
+  ss << "Report data: " << data;
+  return ss.str();
+}
+
+TEST_F(PrimaryParserTest, parsing_safetymode_results_in_correct_string)
+{
+  unsigned char raw_data[sizeof(SAFETY_MODE_MESSAGE_STRING)];
+  // Test all report data types
+  for (unsigned char i = 0; i < 5; i++)
+  {
+    memcpy(raw_data, SAFETY_MODE_MESSAGE_STRING, sizeof(SAFETY_MODE_MESSAGE_STRING));
+    raw_data[27] = i;
+    comm::BinParser bp(raw_data, sizeof(raw_data));
+    std::vector<std::unique_ptr<primary_interface::PrimaryPackage>> products;
+    ASSERT_TRUE(parser_.parse(bp, products));
+    ASSERT_EQ(products.size(), 1);
+
+    if (primary_interface::SafetyModeMessage* data =
+            dynamic_cast<primary_interface::SafetyModeMessage*>(products[0].get()))
+    {
+      EXPECT_EQ(data->report_data_type_, static_cast<uint32_t>(i));
+      if (data->report_data_type_ == 0 || data->report_data_type_ == 1)
+      {
+        EXPECT_EQ(data->toString(), construct_string(data->report_data_type_, "2147943941"));
+      }
+      else if (data->report_data_type_ == 2)
+      {
+        EXPECT_EQ(data->toString(), construct_string(data->report_data_type_, "-2147023355"));
+      }
+      else if (data->report_data_type_ == 3)
+      {
+        EXPECT_EQ(data->toString(), construct_string(data->report_data_type_, "6.30203e-36"));
+      }
+      else
+      {
+        EXPECT_EQ(data->toString(), construct_string(data->report_data_type_, "0x80070605"));
+      }
+    }
+  }
+}
+
+TEST_F(PrimaryParserTest, parse_configuration_data_without_reserved_fields)
+{
+  std::vector<uint8_t> payload(kConfigurationDataPayloadBytes, 0);
+  std::vector<uint8_t> packet = makeRobotStatePacketWithConfigurationSubmessage(payload);
+
+  comm::BinParser bp(packet.data(), packet.size());
+  std::vector<std::unique_ptr<primary_interface::PrimaryPackage>> products;
+  ASSERT_TRUE(parser_.parse(bp, products));
+  ASSERT_EQ(products.size(), 1u);
+
+  auto* config = dynamic_cast<primary_interface::ConfigurationData*>(products[0].get());
+  ASSERT_NE(config, nullptr);
+  EXPECT_EQ(config->reserved_1_, 0);
+  EXPECT_EQ(config->reserved_2_, 0);
+}
+
+TEST_F(PrimaryParserTest, parse_configuration_data_with_reserved_fields)
+{
+  std::vector<uint8_t> payload(kConfigurationDataPayloadBytes, 0);
+  // Big-endian int16 values appended after the legacy payload.
+  payload.push_back(0x12);
+  payload.push_back(0x34);
+  payload.push_back(0x56);
+  payload.push_back(0x78);
+
+  std::vector<uint8_t> packet = makeRobotStatePacketWithConfigurationSubmessage(payload);
+
+  comm::BinParser bp(packet.data(), packet.size());
+  std::vector<std::unique_ptr<primary_interface::PrimaryPackage>> products;
+  ASSERT_TRUE(parser_.parse(bp, products));
+  ASSERT_EQ(products.size(), 1u);
+
+  auto* config = dynamic_cast<primary_interface::ConfigurationData*>(products[0].get());
+  ASSERT_NE(config, nullptr);
+  EXPECT_EQ(config->reserved_1_, static_cast<int16_t>(0x1234));
+  EXPECT_EQ(config->reserved_2_, static_cast<int16_t>(0x5678));
 }
 
 int main(int argc, char* argv[])
