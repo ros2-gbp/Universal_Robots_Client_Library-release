@@ -1,5 +1,5 @@
 // -- BEGIN LICENSE BLOCK ----------------------------------------------
-// Copyright 2025 Universal Robots A/S
+// Copyright 2026 Universal Robots A/S
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
@@ -28,59 +28,54 @@
 // POSSIBILITY OF SUCH DAMAGE.
 // -- END LICENSE BLOCK ------------------------------------------------
 
-#pragma once
+//----------------------------------------------------------------------
+/*!\file
+ *
+ * \author      Jacob Larsen jala@universal-robots.com
+ * \maintainer  Felix Exner feex@universal-robots.com
+ * \date        2026-03-30
+ *
+ */
+//----------------------------------------------------------------------
 
-#include "ur_client_library/types.h"
-#include "ur_client_library/primary/robot_state.h"
-#include <iostream>
+#ifndef UR_CLIENT_LIBRARY_PRIMARY_SAFETY_MODE_MESSAGE_H_INCLUDED
+#define UR_CLIENT_LIBRARY_PRIMARY_SAFETY_MODE_MESSAGE_H_INCLUDED
+
+#include "ur_client_library/primary/robot_message.h"
+#include "ur_client_library/ur/datatypes.h"
+#include <variant>
 
 namespace urcl
 {
 namespace primary_interface
 {
 /*!
- * \brief The ConfigurationData class handles the configuration data sent via the primary UR interface.
+ *  \brief Representation of the primary interface's safety mode message
  */
-class ConfigurationData : public RobotState
+class SafetyModeMessage : public RobotMessage
 {
 public:
-  struct JointPositionLimits
-  {
-    double joint_min_limit;
-    double joint_max_limit;
-  };
-
-  struct JointMotionLimits
-  {
-    double joint_max_speed;
-    double joint_max_acceleration;
-  };
-
-  ConfigurationData() = delete;
+  SafetyModeMessage() = delete;
 
   /*!
-   * \brief Creates a new ConfigurationData object.
+   * \brief Creates a new SafetyModeMessage object to be filled from a package.
    *
-   * \param type The type of RobotState message received
+   * \param timestamp Timestamp of the package
+   * \param source The package's source
    */
-  ConfigurationData(const RobotStateType type) : RobotState(type)
+  SafetyModeMessage(uint64_t timestamp, int8_t source)
+    : RobotMessage(timestamp, source, RobotMessagePackageType::ROBOT_MESSAGE_SAFETY_MODE)
   {
   }
+  SafetyModeMessage(const SafetyModeMessage& pkg);
 
-  /*!
-   * \brief Creates a copy of a ConfigurationData object.
-   *
-   * \param pkg The ConfigurationData object to be copied
-   */
-  ConfigurationData(const ConfigurationData& pkg);
-
-  virtual ~ConfigurationData() = default;
+  virtual ~SafetyModeMessage() = default;
 
   /*!
    * \brief Sets the attributes of the package by parsing a serialized representation of the
    * package.
    *
-   * \param bp A parser containing a serialized version of the package
+   * \param bp A parser containing a serialized text of the package
    *
    * \returns True, if the package was parsed successfully, false otherwise
    */
@@ -102,24 +97,20 @@ public:
    */
   virtual std::string toString() const;
 
-  std::array<JointPositionLimits, 6> joint_position_limits_;
-  std::array<JointMotionLimits, 6> joint_motion_limits_;
-  double v_joint_default_;
-  double a_joint_default_;
-  double v_tool_default_;
-  double a_tool_default_;
-  double eq_radius_;
-  urcl::vector6d_t dh_a_;
-  urcl::vector6d_t dh_d_;
-  urcl::vector6d_t dh_alpha_;
-  urcl::vector6d_t dh_theta_;
-  int32_t masterboard_version_;
-  int32_t controller_box_type_;
-  int32_t robot_type_;
-  int32_t robot_sub_type_;
-  int16_t reserved_1_{ 0 };
-  int16_t reserved_2_{ 0 };
-};
+  int32_t message_code_;
+  int32_t message_argument_;
+  SafetyMode safety_mode_type_;
+  uint32_t report_data_type_;
 
+  /* Content data type varies depending on report_data_type_
+  Type 0 and 1: uint32_t
+  Type 2: int32_t
+  Type 3: float
+  Type 4 : uint32_t (but should be displayed as hex, when printed) */
+  std::variant<uint32_t, int32_t, float> report_data_;
+};
 }  // namespace primary_interface
+
 }  // namespace urcl
+
+#endif  // ifndef UR_CLIENT_LIBRARY_PRIMARY_SAFETY_MODE_MESSAGE_H_INCLUDED
