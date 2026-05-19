@@ -17,6 +17,7 @@ endif()
 
 
 add_library(urcl
+    src/types.cpp
     src/comm/tcp_socket.cpp
     src/comm/tcp_server.cpp
     src/control/motion_primitives.cpp
@@ -38,6 +39,7 @@ add_library(urcl
     src/primary/robot_state/kinematics_info.cpp
     src/primary/robot_state/robot_mode_data.cpp
     src/primary/robot_state/configuration_data.cpp
+    src/primary/robot_state/masterboard_data.cpp
     src/rtde/control_package_pause.cpp
     src/rtde/control_package_setup_inputs.cpp
     src/rtde/control_package_setup_outputs.cpp
