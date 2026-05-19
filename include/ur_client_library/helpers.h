@@ -66,6 +66,34 @@ static inline int sched_get_priority_max(int policy)
 
 #endif  // _WIN32
 
+/*!
+ * \file
+ * \brief Portable helpers to temporarily silence deprecation diagnostics.
+ *
+ * Use \ref URCL_SILENCE_DEPRECATED_BEGIN before and \ref URCL_SILENCE_DEPRECATED_END after the
+ * code that must call deprecated APIs (e.g. deprecated library methods implemented for backward
+ * compatibility). Expands to nothing on unsupported compilers.
+ *
+ * Example:
+ * \code
+ * URCL_SILENCE_DEPRECATED_BEGIN
+ * legacy_call();
+ * URCL_SILENCE_DEPRECATED_END
+ * \endcode
+ */
+
+#if defined(_MSC_VER)
+#  define URCL_SILENCE_DEPRECATED_BEGIN __pragma(warning(push)) __pragma(warning(disable : 4996))
+#  define URCL_SILENCE_DEPRECATED_END __pragma(warning(pop))
+#elif defined(__GNUC__)
+#  define URCL_SILENCE_DEPRECATED_BEGIN                                                                                \
+    _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"")
+#  define URCL_SILENCE_DEPRECATED_END _Pragma("GCC diagnostic pop")
+#else
+#  define URCL_SILENCE_DEPRECATED_BEGIN
+#  define URCL_SILENCE_DEPRECATED_END
+#endif
+
 namespace urcl
 {
 bool setFiFoScheduling(pthread_t& thread, const int priority);
@@ -140,6 +168,23 @@ void clampToUnitRange(std::array<T, N>& values)
  * \returns The robot series corresponding to the given robot type and version information.
  */
 RobotSeries robotSeriesFromTypeAndVersion(const RobotType type, const VersionInformation& version);
+
+/*!
+ * \brief Get the robot type from a string.
+ *
+ * The \c RobotType enum has no dedicated entries for UR7 and UR12, so "ur7e" is mapped to
+ * \c RobotType::UR5 and "ur12e" is mapped to \c RobotType::UR10, matching what the robot
+ * reports over the primary interface.
+ *
+ * \param robot_type_str The string representation of the robot type as used in the start_ursim.sh
+ * script. Must be all lower-case, e.g. "ur3e", "ur5", "ur10e", "ur16e", "ur7e", "ur15", "ur30",
+ * "ur8long".
+ *
+ * \throws std::invalid_argument if \p robot_type_str does not match a known robot type.
+ *
+ * \returns The robot type corresponding to the given string.
+ */
+RobotType robotTypeFromString(const std::string& robot_type_str);
 
 }  // namespace urcl
 #endif  // ifndef UR_CLIENT_LIBRARY_HELPERS_H_INCLUDED
