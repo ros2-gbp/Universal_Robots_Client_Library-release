@@ -33,6 +33,7 @@
 #include "ur_client_library/primary/robot_state/masterboard_data.h"
 #include "ur_client_library/ur/datatypes.h"
 #include "ur_client_library/ur/version_information.h"
+#include "ur_client_library/primary/robot_message/key_message.h"
 
 #include <functional>
 #include <mutex>
@@ -135,23 +136,24 @@ public:
 
     switch (code.report_level)
     {
-      case urcl::primary_interface::ReportLevel::DEBUG:
-      case urcl::primary_interface::ReportLevel::DEVL_DEBUG:
-      case urcl::primary_interface::ReportLevel::DEVL_INFO:
-      case urcl::primary_interface::ReportLevel::DEVL_WARNING:
-      case urcl::primary_interface::ReportLevel::DEVL_VIOLATION:
-      case urcl::primary_interface::ReportLevel::DEVL_FAULT:
+      case ReportLevel::DEBUG:
+      case ReportLevel::DEVL_DEBUG:
+      case ReportLevel::DEVL_INFO:
+      case ReportLevel::DEVL_WARNING:
+      case ReportLevel::DEVL_VIOLATION:
+      case ReportLevel::DEVL_FAULT:
+      case ReportLevel::DEVL_CRITICAL_FAULT:
         URCL_LOG_DEBUG(log_contents.c_str());
         break;
-      case urcl::primary_interface::ReportLevel::INFO:
+      case ReportLevel::INFO:
         URCL_LOG_INFO(log_contents.c_str());
         break;
-      case urcl::primary_interface::ReportLevel::WARNING:
+      case ReportLevel::WARNING:
         URCL_LOG_WARN(log_contents.c_str());
         break;
-      default:
-        // urcl::primary_interface::ReportLevel::VIOLATION:
-        // urcl::primary_interface::ReportLevel::FAULT:
+      case ReportLevel::VIOLATION:
+      case ReportLevel::FAULT:
+      case ReportLevel::CRITICAL_FAULT:
         URCL_LOG_ERROR(log_contents.c_str());
         break;
     }
@@ -208,6 +210,34 @@ public:
   void setErrorCodeMessageCallback(std::function<void(ErrorCode&)> callback_function)
   {
     error_code_message_callback_ = callback_function;
+  }
+
+  virtual bool consume(KeyMessage& pkg) override
+  {
+    if (key_message_callback_ != nullptr)
+    {
+      key_message_callback_(pkg);
+    }
+    return true;
+  }
+
+  void setKeyMessageCallback(std::function<void(KeyMessage&)> callback_function)
+  {
+    key_message_callback_ = callback_function;
+  }
+
+  virtual bool consume(RuntimeExceptionMessage& pkg) override
+  {
+    if (runtime_exception_callback_ != nullptr)
+    {
+      runtime_exception_callback_(pkg);
+    }
+    return true;
+  }
+
+  void setRuntimeExceptionCallback(std::function<void(RuntimeExceptionMessage&)> callback_function)
+  {
+    runtime_exception_callback_ = callback_function;
   }
 
   /*!
@@ -293,6 +323,8 @@ public:
 
 private:
   std::function<void(ErrorCode&)> error_code_message_callback_;
+  std::function<void(KeyMessage&)> key_message_callback_;
+  std::function<void(RuntimeExceptionMessage&)> runtime_exception_callback_;
   std::mutex kinematics_info_mutex_;
   std::unique_ptr<KinematicsInfo> kinematics_info_;
   std::mutex robot_mode_mutex_;
