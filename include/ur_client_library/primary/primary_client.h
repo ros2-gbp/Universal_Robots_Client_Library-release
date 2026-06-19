@@ -47,6 +47,21 @@ namespace urcl
 {
 namespace primary_interface
 {
+
+enum class ScriptTypes
+{
+  DEF = 0,
+  SEC = 1,
+};
+
+struct ScriptInfo
+{
+  std::string script_name;
+  std::string script_code;
+  ScriptTypes script_type;
+  ScriptInfo(std::string name, std::string code, ScriptTypes type)
+    : script_name(name), script_code(code), script_type(type) {};
+};
 class PrimaryClient
 {
 public:
@@ -80,13 +95,61 @@ public:
   /*!
    * \brief Sends a custom script program to the robot.
    *
-   * The given code must be valid according the UR Scripting Manual.
+   * The given code must be valid according the UR Scripting Manual. This function doesn't give any
+   * feedback whether the script was executed successfully or not, it only reports whether the
+   * script was uploaded to the robot or not. For feedback on the execution of the script, use
+   * sendScriptBlocking().
    *
    * \param program URScript code that shall be executed by the robot.
    *
    * \returns true on successful upload, false otherwise.
    */
   bool sendScript(const std::string& program);
+
+  /*!
+   * \brief Send a custom script program to the robot, and wait for the execution result.
+   *
+   * The given code must be valid according the UR Scripting Manual. The given script code will be automatically wrapped
+   * in a function definition, if it is not already. Secondary programs can also be passed to this function, but must be
+   * fully defined as a secondary program when calling. Secondary programs create no feedback, so this function will
+   * return as soon as the program is uploaded successfully to the robot (same as the sendScript function).
+   *
+   * \param program URScript code that shall be executed by the robot.
+   *
+   * \param script_name Name of the script to be executed. This will be ignored, if the given script already defines a
+   * function name. The script name will be used in log messages in both the client library and in the robot logs. If no
+   * name is defined in any way, the script will be given a generic, but unique, name.
+   *
+   * \param start_timeout Amount of time to allow before the robot must have confirmed that the script has been started.
+   * If timeout is 0, it will be ignored. Default value: 1 second
+   *
+   * \param fail_on_warnings Whether or not the function should report a failure, if the robot reports a warning-level
+   * error during execution. Default true
+   *
+   * \param retry_on_readonly_interface Whether to retry, if the primary interface is read-only. This will restart the
+   * primary interface connection, and then try sending the script again. If the interface is still read-only a
+   * ReadOnlyInterfaceException will be thrown. Default true
+   * \note The primary interface connection is read-only when the robot is not in remote control
+   * mode. If the robot switches from local control mode to remote control mode, the connection
+   * remains read-only. In this case, reconnecting will result in a read-write primary interface connection, and the
+   * script can be executed successfully.
+   *
+   * \throw urcl::ScriptCodeSyntaxException if the given script code has syntax errors, which are checked here.
+   * \throw urcl::UrException if the stop command cannot be sent to the robot.
+   * \throw urcl::TimeoutException if the robot doesn't stop the program within the given timeout.
+   * \throw urcl::TimeoutException if the robot mode is not received within 1 second.
+   * \throw urcl::TimeoutException if the program does not start within the given timeout.
+   * \throw urcl::RobotModeException if the robot is in an incorrect mode for script execution.
+   * \throw urcl::SafetyModeException if the robot is in an incorrect safety mode for script execution
+   * \throw urcl::StreamNotConnectedException if the script cannot be transferred to the robot.
+   * \throw urcl::RobotRuntimeException if the given script causes a runtime exception on the robot.
+   * \throw urcl::ReadOnlyInterfaceException if the primary interface is in read-only mode when the script is
+   * transferred. This can happen if the robot was recently switched from manual to remote control mode.
+   * \throw urcl::RobotErrorCodeException if the robot encounters an error during script execution.
+   */
+  void sendScriptBlocking(const std::string& program, const std::string& script_name = "",
+                          const std::chrono::milliseconds start_timeout = std::chrono::seconds(1),
+                          const bool fail_on_warnings = true, const bool retry_on_readonly_interface = true);
 
   bool checkCalibration(const std::string& checksum);
 
@@ -286,6 +349,13 @@ public:
    */
   RobotSeries getRobotSeries();
 
+  /*!
+   * \brief Check if the current safety mode allows for script execution
+   *
+   * Safety modes allowing for execution are: NORMAL, REDUCED, RECOVERY, UNDEFINED_SAFETY_MODE
+   */
+  bool safetyModeAllowsExecution();
+
 private:
   /*!
    * \brief Reconnects the primary stream used to send program to the robot.
@@ -298,6 +368,14 @@ private:
 
   // The function is called whenever an error code message is received
   void errorMessageCallback(ErrorCode& code);
+  void keyMessageCallback(KeyMessage& msg);
+  void runtimeExceptionCallback(RuntimeExceptionMessage& msg);
+
+  ScriptInfo prepareScript(std::string script, std::string script_name);
+  std::vector<std::string> stripCommentsAndWhitespace(std::vector<std::string> script_lines);
+  std::string truncateScriptName(std::string candidate_name);
+  void sendScriptMonitorExecution(const ScriptInfo& script_info, const std::chrono::milliseconds& timeout,
+                                  const bool fail_on_warnings);
 
   PrimaryParser parser_;
   std::shared_ptr<PrimaryConsumer> consumer_;
@@ -311,6 +389,12 @@ private:
 
   std::mutex error_code_queue_mutex_;
   std::deque<ErrorCode> error_code_queue_;
+
+  std::mutex key_message_queue_mutex_;
+  std::deque<KeyMessage> key_message_queue_;
+
+  std::mutex runtime_exception_mutex_;
+  std::shared_ptr<primary_interface::RuntimeExceptionMessage> latest_runtime_exception_;
 };
 
 }  // namespace primary_interface
