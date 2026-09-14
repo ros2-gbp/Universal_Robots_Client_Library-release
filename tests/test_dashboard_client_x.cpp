@@ -1048,6 +1048,145 @@ TEST_F(DashboardClientImplXMockTest, download_support_files_rename_failure)
   std::filesystem::remove_all(out);
 }
 
+// --- commandGetProgramList ---
+// Spec: GET /programs/v1/
+//   200 → ProgramListResponse {"programs": [ProgramInformation, ...]}
+//
+// ProgramInformation declares "name" as the only non-nullable field; the other
+// five are "anyOf": [<type>, {"type": "null"}], so a null is a spec-conforming
+// value for each of them:
+//
+//   "name":             {"type": "string"}
+//   "description":      {"anyOf": [{"type": "string"},  {"type": "null"}]}
+//   "createdDate":      {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+//   "lastSavedDate":    {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+//   "lastModifiedDate": {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+//   "programState":     {"anyOf": [{"$ref": "ProgramState-Output"}, {"type": "null"}]}
+static constexpr const char* MOCK_PROGRAMS_ENDPOINT = "/universal-robots/robot-api/programs/v1/";
+
+TEST_F(DashboardClientImplXMockTest, get_program_list_all_fields_populated)
+{
+  // Baseline: every field carries a value. Reading the nullable fields
+  // defensively must not change the result for a fully populated response.
+  const std::string body = R"({"programs":[{
+    "createdDate":1757000000,
+    "description":"a program with all fields set",
+    "lastModifiedDate":1757000001,
+    "lastSavedDate":1757000002,
+    "name":"full_program",
+    "programState":"FINAL"
+  }]})";
+  server_.Get(MOCK_PROGRAMS_ENDPOINT,
+              [&body](const httplib::Request&, httplib::Response& res) { res.set_content(body, "application/json"); });
+
+  auto response = impl_->commandGetProgramList();
+  ASSERT_TRUE(response.ok);
+
+  const auto programs = std::get<std::vector<ProgramInformation>>(response.data.at("programs"));
+  ASSERT_EQ(programs.size(), 1u);
+  EXPECT_EQ(programs[0].createdDate, 1757000000u);
+  EXPECT_EQ(programs[0].description, "a program with all fields set");
+  EXPECT_EQ(programs[0].lastModifiedDate, 1757000001u);
+  EXPECT_EQ(programs[0].lastSavedDate, 1757000002u);
+  EXPECT_EQ(programs[0].name, "full_program");
+  EXPECT_EQ(programs[0].programState, "FINAL");
+}
+
+TEST_F(DashboardClientImplXMockTest, get_program_list_tolerates_null_description)
+{
+  // "description" is nullable per the schema, so a null here is a valid
+  // response. Converting it straight into the constructor's std::string
+  // parameter threw
+  //   [json.exception.type_error.302] type must be string, but is null
+  // which failed the whole query, including the "name" field most callers need.
+  const std::string body = R"({"programs":[{
+    "createdDate":1757000000,
+    "description":null,
+    "lastModifiedDate":1757000001,
+    "lastSavedDate":1757000002,
+    "name":"program_without_description",
+    "programState":"FINAL"
+  }]})";
+  server_.Get(MOCK_PROGRAMS_ENDPOINT,
+              [&body](const httplib::Request&, httplib::Response& res) { res.set_content(body, "application/json"); });
+
+  auto response = impl_->commandGetProgramList();
+  ASSERT_TRUE(response.ok);
+
+  const auto programs = std::get<std::vector<ProgramInformation>>(response.data.at("programs"));
+  ASSERT_EQ(programs.size(), 1u);
+  EXPECT_EQ(programs[0].name, "program_without_description");
+  EXPECT_EQ(programs[0].description, "");
+  EXPECT_EQ(programs[0].programState, "FINAL");
+}
+
+TEST_F(DashboardClientImplXMockTest, get_program_list_tolerates_all_nullable_fields_null)
+{
+  // Every field the schema declares nullable is null at once. Only "name" is
+  // guaranteed by the spec, so that is the only value that must survive; the
+  // rest default to an empty string / 0.
+  const std::string body = R"({"programs":[{
+    "createdDate":null,
+    "description":null,
+    "lastModifiedDate":null,
+    "lastSavedDate":null,
+    "name":"only_a_name",
+    "programState":null
+  }]})";
+  server_.Get(MOCK_PROGRAMS_ENDPOINT,
+              [&body](const httplib::Request&, httplib::Response& res) { res.set_content(body, "application/json"); });
+
+  auto response = impl_->commandGetProgramList();
+  ASSERT_TRUE(response.ok);
+
+  const auto programs = std::get<std::vector<ProgramInformation>>(response.data.at("programs"));
+  ASSERT_EQ(programs.size(), 1u);
+  EXPECT_EQ(programs[0].name, "only_a_name");
+  EXPECT_EQ(programs[0].description, "");
+  EXPECT_EQ(programs[0].createdDate, 0u);
+  EXPECT_EQ(programs[0].lastModifiedDate, 0u);
+  EXPECT_EQ(programs[0].lastSavedDate, 0u);
+  EXPECT_EQ(programs[0].programState, "");
+}
+
+TEST_F(DashboardClientImplXMockTest, get_program_list_null_field_does_not_drop_other_programs)
+{
+  // The conversion happens inside the loop over "programs", so before the fix a
+  // single program with a null field made the entire list unavailable. All
+  // programs must be returned, in response order.
+  const std::string body = R"({"programs":[
+    {"createdDate":null,"description":null,"lastModifiedDate":null,"lastSavedDate":null,
+     "name":"program_with_nulls","programState":null},
+    {"createdDate":1757000000,"description":"fully populated","lastModifiedDate":1757000001,
+     "lastSavedDate":1757000002,"name":"program_without_nulls","programState":"DRAFT"}
+  ]})";
+  server_.Get(MOCK_PROGRAMS_ENDPOINT,
+              [&body](const httplib::Request&, httplib::Response& res) { res.set_content(body, "application/json"); });
+
+  auto response = impl_->commandGetProgramList();
+  ASSERT_TRUE(response.ok);
+
+  const auto programs = std::get<std::vector<ProgramInformation>>(response.data.at("programs"));
+  ASSERT_EQ(programs.size(), 2u);
+  EXPECT_EQ(programs[0].name, "program_with_nulls");
+  EXPECT_EQ(programs[0].description, "");
+  EXPECT_EQ(programs[1].name, "program_without_nulls");
+  EXPECT_EQ(programs[1].description, "fully populated");
+  EXPECT_EQ(programs[1].programState, "DRAFT");
+}
+
+TEST_F(DashboardClientImplXMockTest, get_program_list_empty)
+{
+  // A robot with no programs answers with an empty array.
+  const std::string body = R"({"programs":[]})";
+  server_.Get(MOCK_PROGRAMS_ENDPOINT,
+              [&body](const httplib::Request&, httplib::Response& res) { res.set_content(body, "application/json"); });
+
+  auto response = impl_->commandGetProgramList();
+  ASSERT_TRUE(response.ok);
+  EXPECT_TRUE(std::get<std::vector<ProgramInformation>>(response.data.at("programs")).empty());
+}
+
 // ---------------------------------------------------------------------------
 // Connection-state tests
 //
