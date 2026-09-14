@@ -1,3 +1,26 @@
+## ur_client_library (humble) - 2.15.2-3
+
+The packages in the `ur_client_library` repository were released into the `humble` distro by running `/root/.local/bin/bloom-release ur_client_library --rosdistro humble` on `Mon, 14 Sep 2026 11:01:55 -0000`
+
+The `ur_client_library` package was released.
+
+Version of package(s) in repository `ur_client_library`:
+
+- upstream repository: https://github.com/UniversalRobots/Universal_Robots_Client_Library
+- release repository: https://github.com/ros2-gbp/Universal_Robots_Client_Library-release.git
+- rosdistro version: `2.15.0-1`
+- old version: `2.15.2-2`
+- new version: `2.15.2-3`
+
+Versions of tools used:
+
+- bloom version: `0.14.4`
+- catkin_pkg version: `1.1.1`
+- rosdep version: `0.27.0`
+- rosdistro version: `1.1.0`
+- vcstools version: `0.1.42`
+
+
 ## ur_client_library (humble) - 2.15.2-2
 
 The packages in the `ur_client_library` repository were released into the `humble` distro by running `/root/.local/bin/bloom-release ur_client_library --rosdistro humble` on `Mon, 14 Sep 2026 10:21:04 -0000`
