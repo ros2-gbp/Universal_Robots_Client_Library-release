@@ -715,6 +715,16 @@ DashboardResponse DashboardClientImplX::commandGetProgramList()
     std::vector<ProgramInformation> programs;
     for (auto prog : json_data["programs"])
     {
+      // The Robot API schema declares every field of ProgramInformation except
+      // "name" as nullable, so each of them has to be read defensively. Reading
+      // a null directly into the constructor's std::string / unsigned int
+      // parameters throws a json type_error and fails the whole query.
+      unsigned int created = 0;
+      if (!prog["createdDate"].is_null())
+      {
+        created = static_cast<unsigned int>(prog["createdDate"]);
+      }
+
       unsigned int last_modified = 0;
       if (!prog["lastModifiedDate"].is_null())
       {
@@ -727,8 +737,19 @@ DashboardResponse DashboardClientImplX::commandGetProgramList()
         last_saved = static_cast<unsigned int>(prog["lastSavedDate"]);
       }
 
-      ProgramInformation pi(prog["createdDate"], prog["description"], last_modified, last_saved, prog["name"],
-                            prog["programState"]);
+      std::string description;
+      if (!prog["description"].is_null())
+      {
+        description = prog["description"];
+      }
+
+      std::string program_state;
+      if (!prog["programState"].is_null())
+      {
+        program_state = prog["programState"];
+      }
+
+      ProgramInformation pi(created, description, last_modified, last_saved, prog["name"], program_state);
       programs.push_back(pi);
     }
     response.data["programs"] = programs;
