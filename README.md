@@ -1,3 +1,26 @@
+## ur_client_library (lyrical) - 2.15.2-1
+
+The packages in the `ur_client_library` repository were released into the `lyrical` distro by running `/root/.local/bin/bloom-release ur_client_library --rosdistro lyrical` on `Mon, 14 Sep 2026 12:08:57 -0000`
+
+The `ur_client_library` package was released.
+
+Version of package(s) in repository `ur_client_library`:
+
+- upstream repository: https://github.com/UniversalRobots/Universal_Robots_Client_Library
+- release repository: https://github.com/ros2-gbp/Universal_Robots_Client_Library-release.git
+- rosdistro version: `2.15.0-1`
+- old version: `2.15.0-1`
+- new version: `2.15.2-1`
+
+Versions of tools used:
+
+- bloom version: `0.14.4`
+- catkin_pkg version: `1.1.1`
+- rosdep version: `0.27.0`
+- rosdistro version: `1.1.0`
+- vcstools version: `0.1.42`
+
+
 ## ur_client_library (kilted) - 2.15.2-1
 
 The packages in the `ur_client_library` repository were released into the `kilted` distro by running `/root/.local/bin/bloom-release ur_client_library --rosdistro kilted` on `Mon, 14 Sep 2026 12:01:45 -0000`
