@@ -146,6 +146,15 @@ struct UrDriverConfiguration
   double force_mode_damping = 0.025;
   /// @private
   double force_mode_gain_scaling = 0.5;
+
+  // New members go last to keep positional initialization working.
+
+  /*!
+   * \brief Maximum duration of a single connection attempt to sockets such as the primary or RTDE interface.
+   *
+   * If set to 0, the operating system's connect timeout is used.
+   */
+  std::chrono::milliseconds socket_connect_timeout = std::chrono::milliseconds::zero();
 };
 
 /*!
@@ -668,14 +677,29 @@ public:
   bool setGravity(const vector3d_t& gravity);
 
   /*!
-   * \brief Set the tool voltage. Note: It requires the external control script to be running or the robot to be in
-   * headless mode.
+   * \brief Set the tool voltage on connector T0. Note: It requires the external control script to be running or the
+   * robot to be in headless mode.
    *
-   * \param voltage tool voltage.
+   * \param voltage Tool voltage. Must be one of \ref T0_TOOL_VOLTAGES.
    *
    * \returns True on successful write.
    */
   bool setToolVoltage(const ToolVoltage voltage);
+
+  /*!
+   * \brief Set the tool voltage on connector T2 (Tool Flange V2).
+   *
+   * Requires PolyScope X 10.15.0 or later and a robot whose RTDE robot properties report Tool Flange V2. PolyScope 5
+   * does not support connector T2.
+   * Note: It requires the external control script to be running or the robot to be in remote_control / headless mode.
+   * State can be read back via RTDE output fields tool_output_voltage_2 and tool_output_current_2.
+   *
+   * \param voltage Tool voltage. Must be one of \ref T2_TOOL_VOLTAGES.
+   *
+   * \returns True on successful write, false if voltage is invalid, the RTDE robot properties do not report Tool
+   * Flange V2, or the write fails.
+   */
+  bool setToolVoltageT2(const ToolVoltage voltage);
 
   /*!
    * \brief Start the robot to be controlled in force mode.
@@ -984,6 +1008,18 @@ public:
   }
 
   /*!
+   * \brief Returns whether the loaded control script supports move identifiers.
+   *
+   * Move identifiers keep points left over from a failed or cancelled trajectory from being
+   * executed by the next one. They are used only when the control script declares support for them
+   * through the '{{TRAJECTORY_MOVE_IDS_REPLACE}}' placeholder.
+   */
+  bool hasMoveIdSupport() const
+  {
+    return trajectory_interface_->hasMoveIdSupport();
+  }
+
+  /*!
    * \brief Register a callback for the robot-based tool contact execution completion.
    *
    * If a tool contact is detected or tool contact is canceled, this callback function will be triggered mode of robot
@@ -1136,8 +1172,18 @@ private:
   std::unique_ptr<control::ScriptSender> script_sender_;
   std::unique_ptr<control::ScriptReader> script_reader_;
 
+  // Identifies the move that is currently being sent to the robot. The driver is what assigns these
+  // identifiers, because it is the only object which observes both the boundaries between moves and
+  // every point written within them. It issues one identifier for each command that begins a move,
+  // and never reuses one for the life of a connection. A value of 0 belongs to no move, and is what
+  // the robot holds before it has been told about any. It is not atomic, because a caller using the
+  // trajectory API from more than one thread must already order the start of each move against the
+  // writing of its points, and that ordering covers this as well.
+  int trajectory_move_id_ = 0;
+
   size_t socket_connection_attempts_ = 0;
   std::chrono::milliseconds socket_reconnection_timeout_ = std::chrono::milliseconds(10000);
+  std::chrono::milliseconds socket_connect_timeout_ = std::chrono::milliseconds::zero();
 
   size_t rtde_initialization_attempts_ = 0;
   std::chrono::milliseconds rtde_initialization_timeout_ = std::chrono::milliseconds(10000);
