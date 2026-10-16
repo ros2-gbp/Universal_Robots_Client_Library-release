@@ -1,3 +1,26 @@
+## ur_client_library (lyrical) - 2.16.0-1
+
+The packages in the `ur_client_library` repository were released into the `lyrical` distro by running `/home/feex/.local/bin/bloom-release ur_client_library --rosdistro lyrical` on `Fri, 16 Oct 2026 06:16:21 -0000`
+
+The `ur_client_library` package was released.
+
+Version of package(s) in repository `ur_client_library`:
+
+- upstream repository: https://github.com/UniversalRobots/Universal_Robots_Client_Library
+- release repository: https://github.com/ros2-gbp/Universal_Robots_Client_Library-release.git
+- rosdistro version: `2.15.2-1`
+- old version: `2.15.2-1`
+- new version: `2.16.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.14.4`
+- catkin_pkg version: `1.1.1`
+- rosdep version: `0.27.0`
+- rosdistro version: `1.1.0`
+- vcstools version: `0.1.42`
+
+
 ## ur_client_library (rolling) - 2.16.0-1
 
 The packages in the `ur_client_library` repository were released into the `rolling` distro by running `/home/feex/.local/bin/bloom-release ur_client_library --rosdistro rolling` on `Fri, 16 Oct 2026 06:06:02 -0000`
