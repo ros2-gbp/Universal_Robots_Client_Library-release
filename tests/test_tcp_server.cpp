@@ -188,6 +188,26 @@ TEST_F(TCPServerTest, message_transmission)
   EXPECT_EQ(client.recv(), message);
 }
 
+TEST_F(TCPServerTest, write_unchecked_initializes_written)
+{
+  TestableTcpServer server(port_);
+  server.start();
+
+  Client client(port_);
+  ASSERT_TRUE(server.waitForConnectionCallback());
+
+  const std::string message = "test message\n";
+  const auto client_fds = server.getClientFDs();
+  ASSERT_EQ(client_fds.size(), 1u);
+
+  // `written` is an output parameter, so its incoming value must not affect the write.
+  size_t written = message.size() + 1;
+  ASSERT_TRUE(server.writeUnchecked(client_fds.front(), reinterpret_cast<const uint8_t*>(message.data()),
+                                    message.size(), written));
+  ASSERT_EQ(written, message.size());
+  EXPECT_EQ(client.recv(), message);
+}
+
 TEST_F(TCPServerTest, client_connections)
 {
   TestableTcpServer server(port_);
@@ -681,6 +701,27 @@ TEST_F(TCPServerTest, message_not_lost_when_client_connects_concurrently)
     fresh->close();
     ASSERT_TRUE(server.waitForDisconnectionCallback(2000));
   }
+}
+
+// The previous implementation read `written` before assigning it, so the fake RTDE server
+// silently sent nothing. writeUnchecked must report the number of bytes it actually wrote.
+TEST_F(TCPServerTest, write_unchecked_reports_bytes_written)
+{
+  TestableTcpServer server(port_);
+  server.start();
+
+  Client client(port_);
+  ASSERT_TRUE(server.waitForConnectionCallback());
+
+  const std::vector<socket_t> fds = server.getClientFDs();
+  ASSERT_EQ(fds.size(), 1u);
+
+  const uint8_t message[] = { 'h', 'e', 'l', 'l', 'o', '\n' };
+  size_t written = 0xdeadbeef;
+  ASSERT_TRUE(server.writeUnchecked(fds.front(), message, sizeof(message), written));
+  EXPECT_EQ(written, sizeof(message));
+
+  EXPECT_EQ(client.recv(), "hello\n");
 }
 
 int main(int argc, char* argv[])
