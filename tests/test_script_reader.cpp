@@ -484,6 +484,7 @@ TEST_F(ScriptReaderTest, TestParsingExternalControl)
   data["JOINT_STATE_REPLACE"] = std::to_string(urcl::control::ReverseInterface::MULT_JOINTSTATE);
   data["TIME_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_TIME);
   data["VEL_ACC_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_VEL_ACC);
+  data["TRAJECTORY_MOVE_IDS_REPLACE"] = true;
   data["SERVO_J_REPLACE"] = "lookahead_time=0.03, gain=2000";
   data["SERVER_IP_REPLACE"] = "1.2.3.4";
   data["SERVER_PORT_REPLACE"] = "50001";
@@ -525,6 +526,7 @@ TEST_F(ScriptReaderTest, TestDirectTorquePopupOnOldVersion)
   data["JOINT_STATE_REPLACE"] = std::to_string(urcl::control::ReverseInterface::MULT_JOINTSTATE);
   data["TIME_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_TIME);
   data["VEL_ACC_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_VEL_ACC);
+  data["TRAJECTORY_MOVE_IDS_REPLACE"] = true;
   data["SERVO_J_REPLACE"] = "lookahead_time=0.03, gain=2000";
   data["SERVER_IP_REPLACE"] = "1.2.3.4";
   data["SERVER_PORT_REPLACE"] = "50001";
@@ -553,6 +555,7 @@ TEST_F(ScriptReaderTest, TestFrictionCompensationConstantsAndHandlerPolyScope523
   data["JOINT_STATE_REPLACE"] = std::to_string(urcl::control::ReverseInterface::MULT_JOINTSTATE);
   data["TIME_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_TIME);
   data["VEL_ACC_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_VEL_ACC);
+  data["TRAJECTORY_MOVE_IDS_REPLACE"] = true;
   data["SERVO_J_REPLACE"] = "lookahead_time=0.03, gain=2000";
   data["SERVER_IP_REPLACE"] = "1.2.3.4";
   data["SERVER_PORT_REPLACE"] = "50001";
@@ -584,6 +587,7 @@ TEST_F(ScriptReaderTest, TestFrictionCompensationConstantsAndHandlerPolyScope101
   data["JOINT_STATE_REPLACE"] = std::to_string(urcl::control::ReverseInterface::MULT_JOINTSTATE);
   data["TIME_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_TIME);
   data["VEL_ACC_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_VEL_ACC);
+  data["TRAJECTORY_MOVE_IDS_REPLACE"] = true;
   data["SERVO_J_REPLACE"] = "lookahead_time=0.03, gain=2000";
   data["SERVER_IP_REPLACE"] = "1.2.3.4";
   data["SERVER_PORT_REPLACE"] = "50001";
@@ -616,6 +620,7 @@ TEST_F(ScriptReaderTest, TestFrictionScalesConstantsAndHandler)
   data["JOINT_STATE_REPLACE"] = std::to_string(urcl::control::ReverseInterface::MULT_JOINTSTATE);
   data["TIME_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_TIME);
   data["VEL_ACC_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_VEL_ACC);
+  data["TRAJECTORY_MOVE_IDS_REPLACE"] = true;
   data["SERVO_J_REPLACE"] = "lookahead_time=0.03, gain=2000";
   data["SERVER_IP_REPLACE"] = "1.2.3.4";
   data["SERVER_PORT_REPLACE"] = "50001";
@@ -642,6 +647,42 @@ TEST_F(ScriptReaderTest, TestFrictionScalesConstantsAndHandler)
             std::string::npos);
   EXPECT_EQ(processed_script.find("Friction scales (viscous_scale/coulomb_scale) are supported from"),
             std::string::npos);
+}
+
+TEST_F(ScriptReaderTest, TestToolT2VoltageScriptRendering)
+{
+  std::string existing_script_file = "../resources/external_control.urscript";
+  ScriptReader reader;
+  ScriptReader::DataDict data;
+  data["BEGIN_REPLACE"] = "";
+  data["JOINT_STATE_REPLACE"] = std::to_string(urcl::control::ReverseInterface::MULT_JOINTSTATE);
+  data["TIME_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_TIME);
+  data["VEL_ACC_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_VEL_ACC);
+  data["TRAJECTORY_MOVE_IDS_REPLACE"] = true;
+  data["SERVO_J_REPLACE"] = "lookahead_time=0.03, gain=2000";
+  data["SERVER_IP_REPLACE"] = "1.2.3.4";
+  data["SERVER_PORT_REPLACE"] = "50001";
+  data["TRAJECTORY_SERVER_PORT_REPLACE"] = "50003";
+  data["SCRIPT_COMMAND_SERVER_PORT_REPLACE"] = "50004";
+
+  // PolyScope 10.15.0 supports set_power_output
+  data["ROBOT_SOFTWARE_VERSION"] = urcl::VersionInformation::fromString("10.15.0");
+  std::string processed_script = reader.readScriptFile(existing_script_file, data);
+  EXPECT_NE(processed_script.find("SET_TOOL_T2_VOLTAGE = 13"), std::string::npos);
+  EXPECT_NE(processed_script.find("set_power_output(\"T2_V\", tool_voltage_t2)"), std::string::npos);
+
+  // Older version 10.14.0 does not call set_power_output
+  data["ROBOT_SOFTWARE_VERSION"] = urcl::VersionInformation::fromString("10.14.0");
+  processed_script = reader.readScriptFile(existing_script_file, data);
+  EXPECT_EQ(processed_script.find("set_power_output(\"T2_V\", tool_voltage_t2)"), std::string::npos);
+
+  // PolyScope 5 does not support connector T2 in any version
+  data["ROBOT_SOFTWARE_VERSION"] = urcl::VersionInformation::fromString("5.26.0");
+  processed_script = reader.readScriptFile(existing_script_file, data);
+  EXPECT_EQ(processed_script.find("set_power_output(\"T2_V\", tool_voltage_t2)"), std::string::npos);
+  data["ROBOT_SOFTWARE_VERSION"] = urcl::VersionInformation::fromString("5.99.0");
+  processed_script = reader.readScriptFile(existing_script_file, data);
+  EXPECT_EQ(processed_script.find("set_power_output(\"T2_V\", tool_voltage_t2)"), std::string::npos);
 }
 
 // --- Security regression tests -------------------------------------------------------------------
@@ -890,6 +931,7 @@ TEST_F(ScriptReaderTest, TestProduceAllScriptFiles)
   data["JOINT_STATE_REPLACE"] = std::to_string(urcl::control::ReverseInterface::MULT_JOINTSTATE);
   data["TIME_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_TIME);
   data["VEL_ACC_REPLACE"] = std::to_string(urcl::control::TrajectoryPointInterface::MULT_VEL_ACC);
+  data["TRAJECTORY_MOVE_IDS_REPLACE"] = true;
   data["SERVO_J_REPLACE"] = "lookahead_time=0.03, gain=2000";
   data["SERVER_IP_REPLACE"] = "1.2.3.4";
   data["SERVER_PORT_REPLACE"] = "50001";
