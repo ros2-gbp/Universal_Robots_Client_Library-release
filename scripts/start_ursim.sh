@@ -31,8 +31,8 @@
 PERSISTENT_BASE="${HOME}/.ursim"
 URCAP_VERSION="latest"
 IP_ADDRESS="192.168.56.101"
-PORT_FORWARDING_WITH_DASHBOARD="-p 30001-30004:30001-30004 -p 29999:29999"
-PORT_FORWARDING_WITHOUT_DASHBOARD="-p 30001-30004:30001-30004"
+PORT_FORWARDING_WITH_DASHBOARD="-p 30001-30004:30001-30004 -p 29999:29999 -p 127.0.0.1:5900:5900 -p 127.0.0.1:6080:6080"
+PORT_FORWARDING_WITHOUT_DASHBOARD="-p 30001-30004:30001-30004 -p 127.0.0.1:8000:80"
 CONTAINER_NAME="ursim"
 TEST_RUN=false
 
@@ -43,7 +43,7 @@ help()
   echo
   echo "Syntax: `basename "$0"` [-m|s|h]"
   echo "options:"
-  echo "    -m <model>     Robot model. One of [ur3, ur3e, ur5, ur5e, ur7e, ur8long, ur10e, ur12e, ur16e, ur15, ur18, ur20, ur30]. Defaults to ur5e."
+  echo "    -m <model>     Robot model. One of [ur3, ur3e, ur5, ur5e, ur7e, ur8long, ur10e, ur12e, ur16e, ur15, ur18, ur20, ur30, ur10g-1750, ur17g-1300, ur18g-950]. Defaults to ur5e."
   echo "    -v <version>   URSim version that should be used.
                    See https://hub.docker.com/r/universalrobots/ursim_e-series/tags
                    for available versions. Defaults to 'latest'"
@@ -58,7 +58,10 @@ help()
   echo "    -n             Name of the docker container. Defaults to '$CONTAINER_NAME'"
   echo "    -i             IP address the container should get. Defaults to $IP_ADDRESS"
   echo "    -d             Detached mode - start in background"
-  echo "    -f             Specify port forwarding to use. Defaults to '$PORT_FORWARDING'. Set to \"DISABLED\" to disable port forwarding."
+  echo "    -f             Specify port forwarding to use. Defaults to
+                     - '$PORT_FORWARDING_WITH_DASHBOARD' (CB3 and PolyScope 5)
+                     - '$PORT_FORWARDING_WITHOUT_DASHBOARD' (PolyScope X).
+                   Set to \"DISABLED\" to disable port forwarding."
   echo "    -h             Print this Help."
   echo
 }
@@ -93,6 +96,9 @@ get_series_from_model()
       ;;
     ur8long|ur15|ur18|ur20|ur30)
       ROBOT_SERIES=e-series
+      ;;
+    ur10g-1750|ur17g-1300|ur18g-950)
+      ROBOT_SERIES=polyscopex
       ;;
     *)
       echo "Not a valid robot model: $robot_model"
@@ -130,7 +136,7 @@ strip_robot_model()
     ROBOT_MODEL=${robot_model^^}
   else
     ROBOT_MODEL=${robot_model^^}
-    # UR8LONG, UR15, UR18, UR20 and UR30 need no further adjustment
+    # UR8LONG, UR15, UR18, UR20, UR30 and g-Series models need no further adjustment
     if [[ "$robot_model" = @(ur3e|ur5e|ur10e|ur16e) ]]; then
       ROBOT_MODEL=$(echo "${ROBOT_MODEL:0:$((${#ROBOT_MODEL}-1))}")
     elif [[ "$robot_model" = @(ur7e|ur12e) ]]; then
@@ -162,6 +168,7 @@ validate_parameters()
   local MIN_UR7e_X="10.9.0" # and UR12e
   local MIN_UR8LONG="5.23.0" # and UR18
   local MIN_UR8LONG_X="10.11.0" # and UR18
+  local MIN_G_SERIES="10.15.0"
 
   local URSIM_VERSION_CHECK="$URSIM_VERSION"
   if [[ "$URSIM_VERSION" == "latest" ]]; then
@@ -170,7 +177,11 @@ validate_parameters()
     elif [[ "$ROBOT_SERIES" == "e-series" ]]; then
       URSIM_VERSION_CHECK="$MIN_UR15"
     elif [[ "$ROBOT_SERIES" == "polyscopex" ]]; then
-      URSIM_VERSION_CHECK="MIN_UR15_X"
+      if [[ $ROBOT_MODEL == @(ur10g-1750|ur17g-1300|ur18g-950) ]]; then
+        URSIM_VERSION_CHECK="$MIN_G_SERIES"
+      else
+        URSIM_VERSION_CHECK="$MIN_UR15_X"
+      fi
     fi
   fi
 
@@ -213,8 +224,10 @@ validate_parameters()
         echo "PolyscopeX is only supported from version $MIN_POLYSCOPE_X onwards"
         exit 1
       fi
-      if [[ $ROBOT_MODEL != @(ur3e|ur5e|ur7e|ur8long|ur10e|ur12e|ur16e|ur15|ur18|ur20|ur30) ]]; then
+      if [[ $ROBOT_MODEL != @(ur3e|ur5e|ur7e|ur8long|ur10e|ur12e|ur16e|ur15|ur18|ur20|ur30|ur10g-1750|ur17g-1300|ur18g-950) ]]; then
         echo "$ROBOT_MODEL is no valid PolyscopeX model!" && exit 1
+      elif [[ $ROBOT_MODEL == @(ur10g-1750|ur17g-1300|ur18g-950) ]]; then
+          MIN_VERSION=$MIN_G_SERIES
       elif [[ $ROBOT_MODEL == "ur7e" || $ROBOT_MODEL == "ur12e" ]]; then
           MIN_VERSION=$MIN_UR7e_X
       elif [[ $ROBOT_MODEL == "ur8long" || $ROBOT_MODEL == "ur18" ]]; then
@@ -233,11 +246,68 @@ validate_parameters()
   exit 1
 }
 
+# Query the published host endpoint for a container port via `docker port`.
+# Echoes HOST:PORT suitable for access URLs. Wildcard binds (0.0.0.0 / [::]) are
+# reported as localhost; other bind addresses are preserved (IPv6 keeps brackets).
+# Only TCP mappings are considered. Returns 0 on success, 1 if not published.
+get_forwarded_access_endpoint()
+{
+  local container_port=$1
+  local docker_output host_port_line bind_addr host_port access_host
+
+  if ! docker_output=$(docker port "$CONTAINER_NAME" "${container_port}/tcp" 2>/dev/null); then
+    return 1
+  fi
+  [[ -z "$docker_output" ]] && return 1
+
+  # Prefer an IPv4 mapping when Docker lists both address families.
+  host_port_line=$(echo "$docker_output" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' | head -n1)
+  if [[ -z "$host_port_line" ]]; then
+    host_port_line=$(echo "$docker_output" | head -n1)
+  fi
+
+  if [[ "$host_port_line" =~ ^\[([^\]]+)\]:([0-9]+)$ ]]; then
+    bind_addr="[${BASH_REMATCH[1]}]"
+    host_port="${BASH_REMATCH[2]}"
+  elif [[ "$host_port_line" =~ ^([^:]+):([0-9]+)$ ]]; then
+    bind_addr="${BASH_REMATCH[1]}"
+    host_port="${BASH_REMATCH[2]}"
+  else
+    return 1
+  fi
+
+  if [[ "$bind_addr" == "0.0.0.0" || "$bind_addr" == "[::]" ]]; then
+    access_host="localhost"
+  else
+    access_host="$bind_addr"
+  fi
+  echo "${access_host}:${host_port}"
+  return 0
+}
+
 post_setup_cb3()
 {
   echo "Docker URSim is running"
   echo -e "\nTo access PolyScope, open the following URL in a web browser."
   printf "\n\n\thttp://%s:6080/vnc.html\n\n" "$IP_ADDRESS"
+  printf "\tor connect with a VNC client to %s:5900\n\n" "$IP_ADDRESS"
+
+  local web_endpoint vnc_endpoint
+  web_endpoint=$(get_forwarded_access_endpoint 6080) || web_endpoint=""
+  vnc_endpoint=$(get_forwarded_access_endpoint 5900) || vnc_endpoint=""
+
+  echo "NOTE: The container-IP access will only work when the browser can reach Docker's bridge network. This is typically not the case when using Docker Desktop."
+  if [[ -n "$web_endpoint" || -n "$vnc_endpoint" ]]; then
+    echo "The published VNC endpoints are shown below. If you want to have the robot interface accessible from a remote client, override -f to bind the GUI ports (6080 and 5900) to a reachable interface."
+  fi
+
+  if [[ -n "$web_endpoint" ]]; then
+    printf "\n\tAccess VNC web: http://%s/vnc.html" "$web_endpoint"
+  fi
+  if [[ -n "$vnc_endpoint" ]]; then
+    printf "\n\tAccess via VNC client: %s" "$vnc_endpoint"
+  fi
+  printf "\n\n"
 }
 post_setup_e-series()
 {
@@ -334,25 +404,43 @@ post_setup_polyscopex()
     curl -L -o "$urcapx_file" "$URCAPX_DOWNLOAD_URL"
   fi
 
+  # Prefer a published host mapping for HTTP (needed on Docker Desktop / NAT where the
+  # container IP is unreachable). Fall back to the container IP when nothing is published.
+  local forwarded_endpoint http_host
+  if forwarded_endpoint=$(get_forwarded_access_endpoint 80); then
+    http_host="$forwarded_endpoint"
+  else
+    http_host="$IP_ADDRESS"
+  fi
+  local base_url="http://${http_host}"
+  local urcaps_url="${base_url}/universal-robots/urservice/api/v1/urcaps"
+
   echo -ne "Starting URSim. Waiting for UrService to be up..."
-  curl_cmd="curl --retry-connrefused -f --write-out %{http_code} --silent --output /dev/null $IP_ADDRESS/universal-robots/urservice/api/v1/urcaps"
-  status_code=$(eval "$curl_cmd")
+  status_code=$(curl --retry-connrefused -f --write-out "%{http_code}" --silent --output /dev/null "$urcaps_url")
 
   until [ "$status_code" == "200" ]
   do
     sleep 1
     echo -ne "."
-    status_code=$(eval "$curl_cmd")
+    status_code=$(curl --retry-connrefused -f --write-out "%{http_code}" --silent --output /dev/null "$urcaps_url")
   done
 
   echo ""; echo "UrService is up"
 
   echo "Installing URCapX $urcapx_file"
-  curl --location --request POST  --silent --output /dev/null "$IP_ADDRESS/universal-robots/urservice/api/v1/urcaps" --form urcapxFile=@"${urcapx_file}"
+  curl --location --request POST  --silent --output /dev/null "$urcaps_url" --form urcapxFile=@"${urcapx_file}"
   echo "";
 
   echo -e "\nTo access PolyScopeX, open the following URL in a web browser."
   printf "\n\n\thttp://%s\n\n" "$IP_ADDRESS"
+
+  echo "NOTE: The container-IP access will only work when the browser can reach Docker's bridge network. This is typically not the case when using Docker Desktop."
+  if [[ -n "$forwarded_endpoint" ]]; then
+    echo "The published PolyScope X endpoint is shown below. If you want to have the robot interface accessible from a remote client, override -f to bind the GUI port (80) to a reachable interface."
+    printf "\n\tAccess PolyScope X: http://%s\n\n" "$forwarded_endpoint"
+  else
+    printf "\n"
+  fi
 }
 
 parse_arguments(){
@@ -554,9 +642,11 @@ main() {
     )
   fi
 
-  # PORT_FORWARDING is a space-separated list of -p flags; word-splitting is intentional
-  # shellcheck disable=SC2206
-  [[ -n "$PORT_FORWARDING" ]] && docker_args+=($PORT_FORWARDING)
+  if [[ -n "$PORT_FORWARDING" ]]; then
+    local -a port_forwarding_args
+    read -r -a port_forwarding_args <<< "$PORT_FORWARDING"
+    docker_args+=("${port_forwarding_args[@]}")
+  fi
   docker_args+=(--name "$CONTAINER_NAME" "universalrobots/ursim_${ROBOT_SERIES}:$URSIM_VERSION")
 
   if [ "$TEST_RUN" = true ]; then
