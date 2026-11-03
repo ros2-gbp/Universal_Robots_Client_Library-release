@@ -23,7 +23,6 @@ target_link_libraries(fake_primary_server PRIVATE ur_client_library::urcl)
 include(GoogleTest)
 
 option(INTEGRATION_TESTS "Build the integration tests that require a running robot / URSim" OFF)
-option(CHECK_RTDE_DOCS_RECIPE "Fetch the RTDE documentation to auto-generate a recipe containing all output fields and check that with the RTDE client. Requires python3 and pandas and an internet connection." OFF)
 set(INTEGRATION_TESTS_ROBOT_IP "" CACHE STRING "If set, override the default robot IP (192.168.56.101) compiled into each integration test main() by passing --robot_ip <ip> to every ctest-registered integration test.")
 # Build Tests
 if (INTEGRATION_TESTS)
@@ -41,12 +40,6 @@ if (INTEGRATION_TESTS)
                   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
                   EXTRA_ARGS ${INTEGRATION_TESTS_ROBOT_IP_ARG}
   )
-  if (CHECK_RTDE_DOCS_RECIPE)
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
-    add_custom_target(generate_outputs ALL COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/resources/generate_rtde_outputs.py)
-    add_dependencies(rtde_tests generate_outputs)
-    target_compile_definitions(rtde_tests PRIVATE CHECK_RTDE_DOCS_RECIPE=1)
-  endif()
 
   add_executable(dashboard_client_g5_tests test_dashboard_client_g5.cpp)
   target_link_libraries(dashboard_client_g5_tests PRIVATE ur_client_library::urcl GTest::gtest_main)
@@ -259,6 +252,8 @@ set_tests_properties(RTDEClientFakeServerTest.server_sender_start_and_stop_are_i
                      RTDEClientFakeServerTest.disconnection_wait_tracks_each_connection
                      RTDEClientFakeServerTest.repeated_output_negotiation_failures_recover
                      RTDEClientFakeServerTest.input_in_use_exhausts_retries_then_recovers
+                     RTDEClientFakeServerTest.init_fails_when_the_robot_sends_no_data_after_start
+                     RTDEClientFakeServerTest.init_waits_out_the_bootup_period_at_a_low_frequency
                      PROPERTIES TIMEOUT 60)
 
 # Covers RTDEClient::reconnect() by taking the fake RTDE server away and giving it back, so it runs
@@ -301,6 +296,16 @@ gtest_add_tests(TARGET      script_sender_tests
 )
 
 add_executable(script_reader_tests test_script_reader.cpp)
+# GCC 13-15 have a false positive -Wmaybe-uninitialized in <regex> headers
+# (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105562). Source-file properties
+# set in the top-level CMakeLists.txt do not apply to this subdirectory target.
+# Bump the upper bound if the bug persists in newer GCC versions.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+   AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 13
+   AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 16)
+  set_source_files_properties(test_script_reader.cpp
+    PROPERTIES COMPILE_OPTIONS "-Wno-maybe-uninitialized")
+endif()
 target_link_libraries(script_reader_tests PRIVATE ur_client_library::urcl GTest::gtest_main)
 gtest_add_tests(
         TARGET script_reader_tests
